@@ -33,7 +33,7 @@ public class PgDumpBackupService : IUpdateBackupService
 
         var dump = await ProcessRunner.RunAsync(
             "docker",
-            $"exec {_options.PostgresContainer} pg_dump -U {_options.PostgresUser} -d {_options.PostgresDatabase}",
+            $"exec {_options.PostgresContainer} pg_dump --clean --if-exists -U {_options.PostgresUser} -d {_options.PostgresDatabase}",
             cancellationToken: cancellationToken);
 
         await File.WriteAllTextAsync(hostPath, dump, cancellationToken);

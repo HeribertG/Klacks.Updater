@@ -25,6 +25,12 @@ public class UpdaterOptions
 
     public string ApiTagEnvVar { get; set; } = "KLACKS_API_TAG";
 
+    public string UiImageRepository { get; set; } = string.Empty;
+
+    public string UiServiceName { get; set; } = "klacks-ui";
+
+    public string UiTagEnvVar { get; set; } = "KLACKS_UI_TAG";
+
     public string PostgresContainer { get; set; } = "klacks-postgres";
 
     public string PostgresUser { get; set; } = "admin";

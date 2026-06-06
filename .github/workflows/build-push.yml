@@ -1,0 +1,70 @@
+# Build + push the Klacks.Updater image to ghcr.io (multi-arch).
+#
+# The project lives in a `Klacks.Updater/` subdirectory and the Dockerfile does
+# `COPY Klacks.Updater/...`, so the build context is the repo root with that subdir
+# present — hence `context: .` + `file: ./Klacks.Updater/Dockerfile`.
+#
+# After the first push, set the ghcr package `klacks-updater` visibility to public
+# (or ship customers a read-only PAT) so `docker compose pull` works on-prem.
+name: Build & Push Klacks.Updater
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="latest"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            if [ "$VERSION" = "latest" ]; then
+              echo "ghcr.io/heribertg/klacks-updater:latest"
+            else
+              echo "ghcr.io/heribertg/klacks-updater:$VERSION"
+              # Move floating tags only for stable releases (no prerelease hyphen).
+              if [ "${VERSION#*-}" = "$VERSION" ]; then
+                echo "ghcr.io/heribertg/klacks-updater:latest"
+              fi
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Klacks.Updater/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.version.outputs.tags }}

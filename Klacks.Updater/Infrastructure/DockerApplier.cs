@@ -3,8 +3,9 @@
 /// <summary>
 /// Docker applier: activates an image tag for the API service via docker compose (pull then up -d),
 /// always pulling first so a rollback target absent locally is fetched from the registry. Recreating
-/// the API container triggers its on-boot migration. Only touches api/ui services, never the updater
-/// itself.
+/// the API container triggers its on-boot migration. When a UI image repository is configured, the UI
+/// service is activated at the same tag right after the API (so updates and rollbacks keep API and UI
+/// in lockstep). Never touches the updater itself.
 /// </summary>
 /// <param name="options">Deployment configuration (compose dir, service name, image repository, tag env var)</param>
 /// <param name="logger">Logger for diagnostic output</param>
@@ -44,9 +45,22 @@ public class DockerApplier : IUpdateApplier
 
     private async Task ActivateTagAsync(string tag, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Activating {Service} tag {Tag}.", _options.ApiServiceName, tag);
+        var hasUi = !string.IsNullOrWhiteSpace(_options.UiImageRepository);
         var env = new Dictionary<string, string> { [_options.ApiTagEnvVar] = tag };
+        if (hasUi)
+        {
+            env[_options.UiTagEnvVar] = tag;
+        }
+
+        _logger.LogInformation("Activating {Service} tag {Tag}.", _options.ApiServiceName, tag);
         await ProcessRunner.RunAsync("docker", $"compose pull {_options.ApiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
         await ProcessRunner.RunAsync("docker", $"compose up -d {_options.ApiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
+
+        if (hasUi)
+        {
+            _logger.LogInformation("Activating {Service} tag {Tag}.", _options.UiServiceName, tag);
+            await ProcessRunner.RunAsync("docker", $"compose pull {_options.UiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
+            await ProcessRunner.RunAsync("docker", $"compose up -d {_options.UiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
+        }
     }
 }

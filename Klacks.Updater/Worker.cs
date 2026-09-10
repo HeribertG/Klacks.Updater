@@ -17,13 +17,20 @@ public class Worker : BackgroundService
 {
     private readonly IUpdateOperationStore _store;
     private readonly UpdateExecutor _executor;
+    private readonly WhisperPluginExecutor _whisperExecutor;
     private readonly IBackupRetentionService _retention;
     private readonly ILogger<Worker> _logger;
 
-    public Worker(IUpdateOperationStore store, UpdateExecutor executor, IBackupRetentionService retention, ILogger<Worker> logger)
+    public Worker(
+        IUpdateOperationStore store,
+        UpdateExecutor executor,
+        WhisperPluginExecutor whisperExecutor,
+        IBackupRetentionService retention,
+        ILogger<Worker> logger)
     {
         _store = store;
         _executor = executor;
+        _whisperExecutor = whisperExecutor;
         _retention = retention;
         _logger = logger;
     }
@@ -75,7 +82,9 @@ public class Worker : BackgroundService
         try
         {
             _logger.LogInformation("Executing {Type} operation {Id} (target {Target}).", operation.OperationType, operation.Id, operation.TargetVersion);
-            var result = await _executor.ExecuteAsync(operation, stoppingToken);
+            var result = IsWhisperOperation(operation.OperationType)
+                ? await _whisperExecutor.ExecuteAsync(operation, stoppingToken)
+                : await _executor.ExecuteAsync(operation, stoppingToken);
             await _store.CompleteAsync(operation.Id, result.Status, result.Message, result.BackupRef, stoppingToken);
             _logger.LogInformation("Operation {Id} finished with status {Status}.", operation.Id, result.Status);
         }
@@ -132,6 +141,9 @@ public class Worker : BackgroundService
             await Task.Delay(UpdaterConstants.HeartbeatInterval, token);
         }
     }
+
+    private static bool IsWhisperOperation(UpdateOperationType type) =>
+        type is UpdateOperationType.WhisperInstall or UpdateOperationType.WhisperUninstall;
 
     private async Task SafeCompleteAsync(Guid id, UpdateExecutionStatus status, string message)
     {

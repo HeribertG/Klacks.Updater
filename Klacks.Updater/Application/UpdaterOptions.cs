@@ -38,4 +38,10 @@ public class UpdaterOptions
     public string PostgresDatabase { get; set; } = "Klacks";
 
     public string BackupDirectory { get; set; } = "/backups";
+
+    public string WhisperServiceName { get; set; } = "whisper-stt";
+
+    public string WhisperComposeProfile { get; set; } = "whisper";
+
+    public string WhisperBaseUrl { get; set; } = "http://whisper-stt:8000";
 }

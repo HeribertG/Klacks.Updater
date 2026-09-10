@@ -20,4 +20,8 @@ public static class UpdaterConstants
     public static readonly TimeSpan StuckLeaseTimeout = TimeSpan.FromMinutes(30);
 
     public const int DefaultBackupRetentionCount = 3;
+
+    public static readonly TimeSpan WhisperReadyTimeout = TimeSpan.FromMinutes(10);
+
+    public static readonly TimeSpan WhisperModelInstallTimeout = TimeSpan.FromMinutes(25);
 }

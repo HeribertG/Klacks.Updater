@@ -62,7 +62,8 @@ public static class ProcessRunner
         string fileName,
         string arguments,
         string stdin,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IDictionary<string, string>? environment = null)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -73,6 +74,14 @@ public static class ProcessRunner
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        if (environment is not null)
+        {
+            foreach (var (key, value) in environment)
+            {
+                startInfo.Environment[key] = value;
+            }
+        }
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();

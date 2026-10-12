@@ -5,7 +5,9 @@ namespace Klacks.Updater.Application;
 /// <summary>
 /// Deployment configuration for the updater (appsettings/env). The image repository + tag env var
 /// drive the Docker applier; the trust root (manifest URL, signature key) and DB connection are
-/// supplied the same way. Nothing about the update source is hard-coded.
+/// supplied the same way. Nothing about the update source is hard-coded. Mode=Native switches to the native adapters:
+/// NativeProgramRoot holds versions/&lt;x&gt; plus the "current" link the service runs from, NativeServiceName is the
+/// Windows service name or launchd label, PostgresBinDirectory locates pg_dump/psql (empty: PATH).
 /// </summary>
 public class UpdaterOptions
 {
@@ -44,4 +46,14 @@ public class UpdaterOptions
     public string WhisperComposeProfile { get; set; } = "whisper";
 
     public string WhisperBaseUrl { get; set; } = "http://whisper-stt:8000";
+
+    public UpdaterMode Mode { get; set; } = UpdaterMode.Docker;
+
+    public string NativeProgramRoot { get; set; } = string.Empty;
+
+    public string NativeServiceName { get; set; } = "Klacks";
+
+    public string PostgresBinDirectory { get; set; } = string.Empty;
+
+    public int NativeRetainedVersions { get; set; } = 3;
 }

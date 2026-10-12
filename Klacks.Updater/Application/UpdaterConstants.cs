@@ -24,4 +24,8 @@ public static class UpdaterConstants
     public static readonly TimeSpan WhisperReadyTimeout = TimeSpan.FromMinutes(10);
 
     public static readonly TimeSpan WhisperModelInstallTimeout = TimeSpan.FromMinutes(25);
+    public const string NativeUpdaterServiceName = "KlacksUpdater";
+    public static readonly TimeSpan BundleDownloadTimeout = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan ServiceStateTimeout = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan ServiceStatePollInterval = TimeSpan.FromSeconds(1);
 }

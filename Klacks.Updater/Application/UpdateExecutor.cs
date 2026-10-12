@@ -61,7 +61,7 @@ public class UpdateExecutor
                 throw new InvalidOperationException("Update operation has no artifact reference.");
             }
 
-            await _applier.ActivateAsync(operation.ArtifactRef, cancellationToken);
+            await _applier.ActivateAsync(operation, cancellationToken);
 
             if (await _healthGate.WaitForHealthyAsync(cancellationToken))
             {

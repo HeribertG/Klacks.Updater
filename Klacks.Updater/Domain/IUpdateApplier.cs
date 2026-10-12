@@ -3,13 +3,13 @@
 namespace Klacks.Updater.Domain;
 
 /// <summary>
-/// Target-specific application of an update (Docker / on-prem). Activating an image stops the current
-/// app container and starts the target one; pulling is always done first so a rollback target that is
-/// not present locally is fetched from the registry.
+/// Target-specific application of an update (Docker / native). Activating stops the current app and starts the
+/// operation's artifact: Docker pulls the image tag first, the native applier downloads and hash-checks the bundle.
+/// ActivateVersionAsync switches back to a version that is already present (rollback).
 /// </summary>
 public interface IUpdateApplier
 {
-    Task ActivateAsync(string imageRef, CancellationToken cancellationToken = default);
+    Task ActivateAsync(UpdateOperation operation, CancellationToken cancellationToken = default);
 
     Task ActivateVersionAsync(string version, CancellationToken cancellationToken = default);
 

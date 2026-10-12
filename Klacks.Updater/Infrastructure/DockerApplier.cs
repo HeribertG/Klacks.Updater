@@ -28,8 +28,9 @@ public class DockerApplier : IUpdateApplier
         _logger = logger;
     }
 
-    public Task ActivateAsync(string imageRef, CancellationToken cancellationToken = default)
+    public Task ActivateAsync(UpdateOperation operation, CancellationToken cancellationToken = default)
     {
+        var imageRef = operation.ArtifactRef ?? string.Empty;
         var tag = imageRef.Contains(':') ? imageRef[(imageRef.LastIndexOf(':') + 1)..] : imageRef;
         return ActivateTagAsync(tag, cancellationToken);
     }

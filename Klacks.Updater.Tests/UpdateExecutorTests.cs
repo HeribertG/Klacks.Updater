@@ -47,7 +47,7 @@ public class UpdateExecutorTests
         var result = await _executor.ExecuteAsync(UpdateOp());
 
         result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
-        await _applier.Received(1).ActivateAsync("ghcr.io/x/api:1.1.0", Arg.Any<CancellationToken>());
+        await _applier.Received(1).ActivateAsync(Arg.Is<UpdateOperation>(o => o != null && o.ArtifactRef == "ghcr.io/x/api:1.1.0"), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -73,7 +73,7 @@ public class UpdateExecutorTests
         result.Status.ShouldBe(UpdateExecutionStatus.RolledBack);
         Received.InOrder(() =>
         {
-            _applier.ActivateAsync("ghcr.io/x/api:1.1.0", Arg.Any<CancellationToken>());
+            _applier.ActivateAsync(Arg.Is<UpdateOperation>(o => o != null && o.ArtifactRef == "ghcr.io/x/api:1.1.0"), Arg.Any<CancellationToken>());
             _applier.StopAsync(Arg.Any<CancellationToken>());
             _backup.RestoreAsync("backup-1", Arg.Any<CancellationToken>());
             _applier.ActivateVersionAsync("1.0.0", Arg.Any<CancellationToken>());
@@ -117,7 +117,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Apply_failure_triggers_rollback()
     {
-        _applier.ActivateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("pull failed")));
+        _applier.ActivateAsync(Arg.Any<UpdateOperation>(), Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("pull failed")));
         _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await _executor.ExecuteAsync(UpdateOp());
@@ -135,7 +135,7 @@ public class UpdateExecutorTests
 
         result.Status.ShouldBe(UpdateExecutionStatus.Failed);
         await _backup.DidNotReceive().CreateAsync(Arg.Any<CancellationToken>());
-        await _applier.DidNotReceive().ActivateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _applier.DidNotReceive().ActivateAsync(Arg.Any<UpdateOperation>(), Arg.Any<CancellationToken>());
         await _applier.DidNotReceive().StopAsync(Arg.Any<CancellationToken>());
     }
 

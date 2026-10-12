@@ -16,12 +16,38 @@ builder.Services.AddHttpClient(HttpWhisperModelInstaller.HttpClientName, client 
 });
 
 builder.Services.AddSingleton<IUpdateOperationStore, NpgsqlUpdateOperationStore>();
-builder.Services.AddSingleton<IUpdateApplier, DockerApplier>();
-builder.Services.AddSingleton<IUpdateBackupService, PgDumpBackupService>();
+var mode = builder.Configuration.GetSection(UpdaterOptions.SectionName).GetValue<UpdaterMode>(nameof(UpdaterOptions.Mode));
+if (mode == UpdaterMode.Native)
+{
+    builder.Services.AddWindowsService(options => options.ServiceName = UpdaterConstants.NativeUpdaterServiceName);
+    builder.Services.AddHttpClient(NativeBundleApplier.HttpClientName, client =>
+    {
+        client.Timeout = UpdaterConstants.BundleDownloadTimeout;
+    });
+    builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
+    builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
+    builder.Services.AddSingleton<IWhisperPluginApplier, UnsupportedWhisperPluginApplier>();
+    if (OperatingSystem.IsWindows())
+    {
+        builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
+        builder.Services.AddSingleton<IVersionLinkSwitcher, JunctionLinkSwitcher>();
+    }
+    else
+    {
+        builder.Services.AddSingleton<IServiceController, LaunchdServiceController>();
+        builder.Services.AddSingleton<IVersionLinkSwitcher, SymbolicLinkSwitcher>();
+    }
+}
+else
+{
+    builder.Services.AddSingleton<IUpdateApplier, DockerApplier>();
+    builder.Services.AddSingleton<IUpdateBackupService, PgDumpBackupService>();
+    builder.Services.AddSingleton<IWhisperPluginApplier, DockerWhisperApplier>();
+}
+
 builder.Services.AddSingleton<IUpdateHealthGate, HttpHealthGate>();
 builder.Services.AddSingleton<IArtifactVerifier, RsaArtifactVerifier>();
 builder.Services.AddSingleton<IBackupRetentionService, FileBackupRetentionService>();
-builder.Services.AddSingleton<IWhisperPluginApplier, DockerWhisperApplier>();
 builder.Services.AddSingleton<IWhisperModelInstaller, HttpWhisperModelInstaller>();
 builder.Services.AddSingleton<IWhisperProviderStore, NpgsqlWhisperProviderStore>();
 builder.Services.AddSingleton<IWhisperResourceCheck, LinuxWhisperResourceCheck>();

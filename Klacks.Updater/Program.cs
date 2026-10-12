@@ -7,6 +7,15 @@ using Klacks.Updater.Infrastructure;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+var nativeDataRoot = builder.Configuration[UpdaterConstants.NativeDataRootKey];
+if (!string.IsNullOrWhiteSpace(nativeDataRoot))
+{
+    builder.Configuration.AddJsonFile(
+        Path.Combine(nativeDataRoot, UpdaterConstants.NativeConfigDirectoryName, UpdaterConstants.NativeConfigFileName),
+        optional: false,
+        reloadOnChange: false);
+}
+
 builder.Services.Configure<UpdaterOptions>(builder.Configuration.GetSection(UpdaterOptions.SectionName));
 
 builder.Services.AddHttpClient(HttpHealthGate.HttpClientName);

@@ -42,7 +42,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Healthy_update_succeeds()
     {
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await _executor.ExecuteAsync(UpdateOp());
 
@@ -53,7 +53,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Backup_only_taken_when_migrations_present()
     {
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
         await _executor.ExecuteAsync(UpdateOp(migrations: false));
         await _backup.DidNotReceive().CreateAsync(Arg.Any<CancellationToken>());
@@ -66,7 +66,7 @@ public class UpdateExecutorTests
     public async Task Unhealthy_update_rolls_back_in_correct_order()
     {
         _backup.CreateAsync(Arg.Any<CancellationToken>()).Returns("backup-1");
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(false, true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, true);
 
         var result = await _executor.ExecuteAsync(UpdateOp(migrations: true));
 
@@ -83,7 +83,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Rollback_does_not_restore_when_no_backup_taken()
     {
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(false, true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, true);
 
         var result = await _executor.ExecuteAsync(UpdateOp(migrations: false));
 
@@ -95,7 +95,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Rollback_health_failure_yields_rollback_failed()
     {
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(false, false);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false, false);
 
         var result = await _executor.ExecuteAsync(UpdateOp());
 
@@ -106,7 +106,7 @@ public class UpdateExecutorTests
     public async Task Restore_failure_yields_rollback_failed()
     {
         _backup.CreateAsync(Arg.Any<CancellationToken>()).Returns("backup-1");
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(false);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
         _backup.RestoreAsync("backup-1", Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("psql failed")));
 
         var result = await _executor.ExecuteAsync(UpdateOp(migrations: true));
@@ -118,7 +118,7 @@ public class UpdateExecutorTests
     public async Task Apply_failure_triggers_rollback()
     {
         _applier.ActivateAsync(Arg.Any<UpdateOperation>(), Arg.Any<CancellationToken>()).Returns(Task.FromException(new InvalidOperationException("pull failed")));
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
         var result = await _executor.ExecuteAsync(UpdateOp());
 
@@ -142,7 +142,7 @@ public class UpdateExecutorTests
     [Test]
     public async Task Explicit_rollback_restores_paired_backup_and_target_version()
     {
-        _health.WaitForHealthyAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _health.WaitForHealthyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
         var op = new UpdateOperation
         {
             Id = Guid.NewGuid(),

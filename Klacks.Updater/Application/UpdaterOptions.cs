@@ -19,6 +19,8 @@ public class UpdaterOptions
 
     public string HealthUrl { get; set; } = "http://klacks-api:5000/internal/health/deep";
 
+    public string VersionUrl { get; set; } = "http://klacks-api:5000/api/Version";
+
     public string ComposeProjectDir { get; set; } = "/root/apps";
 
     public string ApiImageRepository { get; set; } = "ghcr.io/heribertg/klacks-api";

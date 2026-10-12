@@ -63,7 +63,7 @@ public class UpdateExecutor
 
             await _applier.ActivateAsync(operation, cancellationToken);
 
-            if (await _healthGate.WaitForHealthyAsync(cancellationToken))
+            if (await _healthGate.WaitForHealthyAsync(operation.TargetVersion, cancellationToken))
             {
                 return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, backupRef, "Update applied and healthy.");
             }
@@ -95,7 +95,7 @@ public class UpdateExecutor
 
             await _applier.ActivateVersionAsync(operation.RollbackTargetVersion, cancellationToken);
 
-            if (await _healthGate.WaitForHealthyAsync(cancellationToken))
+            if (await _healthGate.WaitForHealthyAsync(operation.RollbackTargetVersion, cancellationToken))
             {
                 return new UpdateExecutionResult(UpdateExecutionStatus.RolledBack, backupRef, "Rolled back to previous version.");
             }

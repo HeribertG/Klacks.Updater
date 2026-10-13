@@ -28,6 +28,7 @@ public static class UpdaterConstants
     public const string NativeDataRootKey = "Hosting:DataRoot";
     public const string NativeConfigDirectoryName = "config";
     public const string NativeConfigFileName = "klacks.native.json";
+    public const string VersionPath = "/api/Version";
     public static readonly TimeSpan BundleDownloadTimeout = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan ServiceStateTimeout = TimeSpan.FromMinutes(2);
     // Klacks reports "start pending" while it migrates the database and initialises before it accepts requests.

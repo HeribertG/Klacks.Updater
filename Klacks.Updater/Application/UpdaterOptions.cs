@@ -19,7 +19,9 @@ public class UpdaterOptions
 
     public string HealthUrl { get; set; } = "http://klacks-api:5000/internal/health/deep";
 
-    public string VersionUrl { get; set; } = "http://klacks-api:5000/api/Version";
+    // Empty: derived from HealthUrl (same scheme, host and port, path UpdaterConstants.VersionPath), so a deployment
+    // that moves the API to another host cannot end up with a version check that never succeeds.
+    public string VersionUrl { get; set; } = string.Empty;
 
     public string ComposeProjectDir { get; set; } = "/root/apps";
 

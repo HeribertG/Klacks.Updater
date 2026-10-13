@@ -67,6 +67,47 @@ public class HttpHealthGateTests
         await Should.ThrowAsync<OperationCanceledException>(() => gate.WaitForHealthyAsync("1.2.3", cancellation.Token));
     }
 
+    [Test]
+    public void Version_url_follows_the_health_url_when_not_configured()
+    {
+        var options = new UpdaterOptions { HealthUrl = "http://klacks-backend:8080/internal/health/deep" };
+
+        HttpHealthGate.ResolveVersionUrl(options).ShouldBe("http://klacks-backend:8080/api/Version");
+    }
+
+    [Test]
+    public void Explicit_version_url_wins()
+    {
+        var options = new UpdaterOptions { HealthUrl = HealthUrl, VersionUrl = "http://127.0.0.1:5180/api/Version" };
+
+        HttpHealthGate.ResolveVersionUrl(options).ShouldBe("http://127.0.0.1:5180/api/Version");
+    }
+
+    [Test]
+    public async Task Non_json_version_answer_keeps_polling_instead_of_failing()
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(HttpHealthGate.HttpClientName)
+            .Returns(_ => new HttpClient(new HtmlVersionHandler()));
+        var gate = new HttpHealthGate(
+            factory, Options.Create(new UpdaterOptions { HealthUrl = HealthUrl, VersionUrl = VersionUrl }),
+            NullLogger<HttpHealthGate>.Instance);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+        await Should.ThrowAsync<OperationCanceledException>(() => gate.WaitForHealthyAsync("1.2.3", cancellation.Token));
+    }
+
+    private sealed class HtmlVersionHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<!doctype html><app-root></app-root>", Encoding.UTF8, "text/html"),
+            });
+        }
+    }
+
     private sealed class StubHandler(string versionJson) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

@@ -158,6 +158,29 @@ public class NativeBundleApplierTests
             .ShouldBe(["1.1.0", "1.2.0"]);
     }
 
+    [Test]
+    public async Task Activate_never_prunes_the_rollback_target_or_the_updaters_own_version()
+    {
+        var created = DateTime.UtcNow.AddDays(-10);
+        foreach (var version in new[] { "1.0.0", "1.0.5", "1.1.0" })
+        {
+            var directory = Directory.CreateDirectory(Path.Combine(_root, "versions", version));
+            directory.CreationTimeUtc = created;
+            created = created.AddDays(1);
+        }
+
+        var rollbackTarget = Path.Combine(_root, "versions", "1.0.0");
+        var updaterOwn = Path.Combine(_root, "versions", "1.0.5");
+        _links.ReadTarget(Arg.Any<string>()).Returns(updaterOwn);
+        var operation = Operation(await BundleSha256Async()) with { FromVersion = "1.0.0" };
+
+        await CreateApplier(retainedVersions: 2).ActivateAsync(operation);
+
+        Directory.Exists(rollbackTarget).ShouldBeTrue();
+        Directory.Exists(updaterOwn).ShouldBeTrue();
+        Directory.Exists(Path.Combine(_root, "versions", "1.2.0")).ShouldBeTrue();
+    }
+
     private sealed class StaticBundleHandler(byte[] content) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

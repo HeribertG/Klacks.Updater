@@ -52,7 +52,7 @@ public class HttpHealthGate : IUpdateHealthGate
                     return true;
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+            catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or NotSupportedException)
             {
                 // API is restarting / not yet reachable — keep polling until the deadline.
             }
@@ -66,12 +66,12 @@ public class HttpHealthGate : IUpdateHealthGate
 
     private async Task<bool> RunsExpectedVersionAsync(HttpClient client, (int Major, int Minor, int Patch)? expected, CancellationToken cancellationToken)
     {
-        if (expected is null || string.IsNullOrWhiteSpace(_options.VersionUrl))
+        if (expected is null)
         {
             return true;
         }
 
-        var running = await client.GetFromJsonAsync<RunningVersion>(_options.VersionUrl, cancellationToken);
+        var running = await client.GetFromJsonAsync<RunningVersion>(ResolveVersionUrl(_options), cancellationToken);
         var matches = running is not null
             && (running.Major, running.Minor, running.Patch) == expected.Value;
         if (!matches)
@@ -82,6 +82,16 @@ public class HttpHealthGate : IUpdateHealthGate
         }
 
         return matches;
+    }
+
+    public static string ResolveVersionUrl(UpdaterOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.VersionUrl))
+        {
+            return options.VersionUrl;
+        }
+
+        return new Uri(new Uri(options.HealthUrl), UpdaterConstants.VersionPath).AbsoluteUri;
     }
 
     public static (int Major, int Minor, int Patch)? ParseNumericVersion(string version)

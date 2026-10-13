@@ -28,6 +28,7 @@ public class NativeBundleApplier : IUpdateApplier
 
     private const string BundleFileName = "bundle.zip";
     private const string ExtractDirectoryName = "extracted";
+    private const int MinimumRetainedVersions = 2;
 
     private readonly UpdaterOptions _options;
     private readonly NativeInstallLayout _layout;
@@ -35,6 +36,7 @@ public class NativeBundleApplier : IUpdateApplier
     private readonly IServiceController _serviceController;
     private readonly IVersionLinkSwitcher _linkSwitcher;
     private readonly ILogger<NativeBundleApplier> _logger;
+    private readonly string? _updaterVersionDirectory;
 
     public NativeBundleApplier(
         IOptions<UpdaterOptions> options,
@@ -49,6 +51,9 @@ public class NativeBundleApplier : IUpdateApplier
         _serviceController = serviceController;
         _linkSwitcher = linkSwitcher;
         _logger = logger;
+        // The updater runs from current\updater; its files stay locked in the version directory it was started from,
+        // even after the link moves on, so that directory is never pruned while this process lives.
+        _updaterVersionDirectory = ReadCurrentTarget();
     }
 
     public async Task ActivateAsync(UpdateOperation operation, CancellationToken cancellationToken = default)
@@ -65,7 +70,7 @@ public class NativeBundleApplier : IUpdateApplier
         }
 
         await SwitchToAsync(versionDirectory, cancellationToken);
-        RemoveOldVersions(versionDirectory);
+        RemoveOldVersions(versionDirectory, operation.RollbackTargetVersion);
     }
 
     public Task ActivateVersionAsync(string version, CancellationToken cancellationToken = default)
@@ -138,14 +143,35 @@ public class NativeBundleApplier : IUpdateApplier
         await _serviceController.StartAsync(cancellationToken);
     }
 
-    private void RemoveOldVersions(string currentDirectory)
+    private string? ReadCurrentTarget()
     {
-        var keep = Math.Max(_options.NativeRetainedVersions, 2);
+        try
+        {
+            return _linkSwitcher.ReadTarget(_layout.CurrentLink);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private void RemoveOldVersions(string currentDirectory, string rollbackVersion)
+    {
+        var keep = Math.Max(_options.NativeRetainedVersions, MinimumRetainedVersions);
+        var protectedDirectories = new[]
+            {
+                currentDirectory,
+                string.IsNullOrWhiteSpace(rollbackVersion) ? null : _layout.VersionDirectory(rollbackVersion),
+                _updaterVersionDirectory,
+            }
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => Path.GetFullPath(path!).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var obsolete = new DirectoryInfo(_layout.VersionsDirectory)
             .EnumerateDirectories()
-            .Where(directory => !string.Equals(directory.FullName, currentDirectory, StringComparison.OrdinalIgnoreCase))
+            .Where(directory => !protectedDirectories.Contains(directory.FullName.TrimEnd(Path.DirectorySeparatorChar)))
             .OrderByDescending(directory => directory.CreationTimeUtc)
-            .Skip(keep - 1);
+            .Skip(Math.Max(keep - protectedDirectories.Count, 0));
 
         foreach (var directory in obsolete)
         {
@@ -154,7 +180,7 @@ public class NativeBundleApplier : IUpdateApplier
                 directory.Delete(recursive: true);
                 _logger.LogInformation("Removed old version directory {Directory}.", directory.FullName);
             }
-            catch (IOException ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 _logger.LogWarning(ex, "Could not remove old version directory {Directory}.", directory.FullName);
             }

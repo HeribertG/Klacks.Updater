@@ -30,5 +30,7 @@ public static class UpdaterConstants
     public const string NativeConfigFileName = "klacks.native.json";
     public static readonly TimeSpan BundleDownloadTimeout = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan ServiceStateTimeout = TimeSpan.FromMinutes(2);
+    // Klacks reports "start pending" while it migrates the database and initialises before it accepts requests.
+    public static readonly TimeSpan ServiceStartTimeout = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan ServiceStatePollInterval = TimeSpan.FromSeconds(1);
 }

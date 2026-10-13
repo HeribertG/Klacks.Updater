@@ -44,7 +44,7 @@ public class WindowsServiceController : IServiceController
             service.Start();
         }
 
-        service.WaitForStatus(ServiceControllerStatus.Running, UpdaterConstants.ServiceStateTimeout);
+        service.WaitForStatus(ServiceControllerStatus.Running, UpdaterConstants.ServiceStartTimeout);
         return Task.CompletedTask;
     }
 }

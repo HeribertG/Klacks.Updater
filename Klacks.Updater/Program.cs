@@ -35,14 +35,15 @@ if (mode == UpdaterMode.Native)
     });
     builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
-    builder.Services.AddSingleton<IWhisperPluginApplier, UnsupportedWhisperPluginApplier>();
     if (OperatingSystem.IsWindows())
     {
+        builder.Services.AddSingleton<IWhisperPluginApplier, WindowsSttServiceApplier>();
         builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, JunctionLinkSwitcher>();
     }
     else
     {
+        builder.Services.AddSingleton<IWhisperPluginApplier, UnsupportedWhisperPluginApplier>();
         builder.Services.AddSingleton<IServiceController, LaunchdServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, SymbolicLinkSwitcher>();
     }

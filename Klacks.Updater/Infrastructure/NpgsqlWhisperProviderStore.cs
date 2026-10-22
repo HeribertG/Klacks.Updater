@@ -1,9 +1,9 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
 /// <summary>
-/// Raw-Npgsql upsert of the well-known Whisper row in custom_stt_providers (same row as
-/// Klacks.Api/deploy/whisper-stt-provider.sql). The updater writes it only after the container and
-/// model are actually in place so the API never lists a dead provider.
+/// Raw-Npgsql upsert of the well-known self-hosted STT row in custom_stt_providers (same row as
+/// Klacks.Api/deploy/whisper-stt-provider.sql). Name, URL and model follow the installed engine (Whisper or Parakeet).
+/// The updater writes it only after the engine and model are actually in place so the API never lists a dead provider.
 /// </summary>
 /// <param name="options">Deployment configuration (connection string)</param>
 using Klacks.Updater.Application;
@@ -22,7 +22,7 @@ public class NpgsqlWhisperProviderStore : IWhisperProviderStore
         _options = options.Value;
     }
 
-    public async Task UpsertEnabledAsync(string modelId, CancellationToken cancellationToken = default)
+    public async Task UpsertEnabledAsync(string modelId, string providerName, string apiUrl, CancellationToken cancellationToken = default)
     {
         const string sql = @"
             INSERT INTO custom_stt_providers
@@ -30,7 +30,8 @@ public class NpgsqlWhisperProviderStore : IWhisperProviderStore
             VALUES
                 (@id, @name, @connectionType, @apiUrl, NULL, @model, true, true, false, now())
             ON CONFLICT (id) DO UPDATE
-            SET api_url = EXCLUDED.api_url,
+            SET name = EXCLUDED.name,
+                api_url = EXCLUDED.api_url,
                 language_model = EXCLUDED.language_model,
                 is_enabled = true,
                 is_deleted = false,
@@ -39,9 +40,9 @@ public class NpgsqlWhisperProviderStore : IWhisperProviderStore
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", WhisperPluginConstants.ProviderId);
-        command.Parameters.AddWithValue("name", WhisperPluginConstants.ProviderName);
+        command.Parameters.AddWithValue("name", providerName);
         command.Parameters.AddWithValue("connectionType", WhisperPluginConstants.ConnectionTypeRest);
-        command.Parameters.AddWithValue("apiUrl", WhisperPluginConstants.ProviderApiUrl);
+        command.Parameters.AddWithValue("apiUrl", apiUrl);
         command.Parameters.AddWithValue("model", modelId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

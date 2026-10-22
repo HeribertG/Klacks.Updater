@@ -13,6 +13,8 @@ public class UpdaterOptions
 {
     public const string SectionName = "Updater";
 
+    public const string DefaultSttBaseUrl = "http://klacks-stt:8000";
+
     public string ConnectionString { get; set; } = string.Empty;
 
     public string SignaturePublicKey { get; set; } = string.Empty;
@@ -55,7 +57,7 @@ public class UpdaterOptions
 
     public string SttComposeProfile { get; set; } = "parakeet";
 
-    public string SttBaseUrl { get; set; } = "http://klacks-stt:8000";
+    public string SttBaseUrl { get; set; } = DefaultSttBaseUrl;
 
     public string NativeSttServiceName { get; set; } = "KlacksStt";
 

@@ -20,11 +20,6 @@ namespace Klacks.Updater.Infrastructure;
 [SupportedOSPlatform("windows")]
 public class WindowsSttServiceApplier : IWhisperPluginApplier
 {
-    private const string ServiceControlExecutable = "sc.exe";
-    private const string ConfigCommand = "config";
-    private const string StartAuto = "start= auto";
-    private const string StartDisabled = "start= disabled";
-
     private readonly UpdaterOptions _options;
     private readonly ISttServiceRegistrar _registrar;
     private readonly ILogger<WindowsSttServiceApplier> _logger;
@@ -49,8 +44,8 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
         await _registrar.EnsureRegisteredAsync(cancellationToken);
 
         await ProcessRunner.RunAsync(
-            ServiceControlExecutable,
-            $"{ConfigCommand} {serviceName} {StartAuto}",
+            SttServiceRegistration.ServiceControlExecutable,
+            SttServiceRegistration.BuildStartTypeArguments(serviceName, SttServiceRegistration.StartTypeAuto),
             cancellationToken: cancellationToken);
 
         using var service = new ServiceController(serviceName);
@@ -65,6 +60,12 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
     public async Task StopAsync(SttEngineProfile profile, CancellationToken cancellationToken = default)
     {
         var serviceName = _options.NativeSttServiceName;
+        if (!WindowsServices.Exists(serviceName))
+        {
+            _logger.LogInformation("Native STT service {Service} is not registered; nothing to stop.", serviceName);
+            return;
+        }
+
         _logger.LogInformation("Stopping native STT service {Service}.", serviceName);
 
         try
@@ -80,8 +81,8 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
         finally
         {
             await ProcessRunner.RunAsync(
-                ServiceControlExecutable,
-                $"{ConfigCommand} {serviceName} {StartDisabled}",
+                SttServiceRegistration.ServiceControlExecutable,
+                SttServiceRegistration.BuildStartTypeArguments(serviceName, SttServiceRegistration.StartTypeDisabled),
                 cancellationToken: cancellationToken);
         }
     }

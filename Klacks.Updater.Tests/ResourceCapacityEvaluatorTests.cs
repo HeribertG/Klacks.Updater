@@ -13,6 +13,31 @@ public class ResourceCapacityEvaluatorTests
     private const long OneMegabyte = 1024L * 1024;
 
     [Test]
+    public void ResolveProbeRoot_prefers_the_data_root_drive()
+    {
+        var dataRoot = OperatingSystem.IsWindows() ? @"D:\KlacksData" : "/data/klacks";
+        var programRoot = OperatingSystem.IsWindows() ? @"C:\Program Files\Klacks" : "/opt/klacks";
+
+        ResourceCapacityEvaluator.ResolveProbeRoot(dataRoot, programRoot).ShouldBe(Path.GetPathRoot(dataRoot));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("   ")]
+    public void ResolveProbeRoot_falls_back_to_the_program_root_when_the_data_root_is_unknown(string? dataRoot)
+    {
+        var programRoot = OperatingSystem.IsWindows() ? @"C:\Program Files\Klacks" : "/opt/klacks";
+
+        ResourceCapacityEvaluator.ResolveProbeRoot(dataRoot, programRoot).ShouldBe(Path.GetPathRoot(programRoot));
+    }
+
+    [Test]
+    public void ResolveProbeRoot_is_null_when_nothing_is_configured()
+    {
+        ResourceCapacityEvaluator.ResolveProbeRoot(null, string.Empty).ShouldBeNull();
+    }
+
+    [Test]
     public void Evaluate_returns_null_when_capacity_suffices()
     {
         ResourceCapacityEvaluator.Evaluate(2 * OneGigabyte, 5 * OneGigabyte, OneGigabyte, OneGigabyte).ShouldBeNull();

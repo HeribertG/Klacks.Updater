@@ -6,8 +6,9 @@
 /// Speaches-compatible API → install the model → enable the provider row → only then stop the other engines (a failed
 /// switch must never leave the system without a working engine). A failure after the start of an engine that was not
 /// yet the enabled one stops that newcomer again; a model switch of the running engine leaves it running. Uninstall:
-/// disable the provider row → stop every supported engine. Exactly one engine runs at a time. Never throws; always
-/// returns a terminal status.
+/// disable the provider row → stop every supported engine. Exactly one engine runs at a time. Returns a terminal status
+/// and never throws, except that a cancellation requested through the token (updater shutdown) is rethrown after a
+/// best-effort stop of a just-started newcomer; a timeout that is not a requested cancellation is a plain failure.
 /// </summary>
 /// <param name="applier">Starts, stops and capability-checks the engines on this installation</param>
 /// <param name="installer">Polls the engine API and installs the model</param>
@@ -23,6 +24,8 @@ namespace Klacks.Updater.Application;
 
 public class WhisperPluginExecutor
 {
+    public const string PreviousEngineStopFailedNote = " (stopping the previous engine failed; see updater log)";
+
     private readonly IWhisperPluginApplier _applier;
     private readonly IWhisperModelInstaller _installer;
     private readonly IWhisperProviderStore _providerStore;
@@ -112,12 +115,17 @@ public class WhisperPluginExecutor
 
             await _installer.InstallModelAsync(profile.BaseUrl, operation.ArtifactRef, cancellationToken);
             await _providerStore.UpsertEnabledAsync(operation.ArtifactRef, profile.ProviderName, profile.BaseUrl, cancellationToken);
-            await StopOtherEnginesAsync(profile, cancellationToken);
+            var previousEnginesStopped = await StopOtherEnginesAsync(profile, cancellationToken);
 
-            return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, $"{profile.ProviderName} installed (model {operation.TargetVersion}).");
+            var message = $"{profile.ProviderName} installed (model {operation.TargetVersion}).";
+            return new UpdateExecutionResult(
+                UpdateExecutionStatus.Succeeded,
+                null,
+                previousEnginesStopped ? message : message + PreviousEngineStopFailedNote);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            await StopNewcomerAsync(profile, newcomerStartAttempted);
             throw;
         }
         catch (Exception ex)
@@ -143,7 +151,7 @@ public class WhisperPluginExecutor
                 {
                     await _applier.StopAsync(profile, cancellationToken);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogWarning(ex, "Stopping STT service {Service} failed during uninstall {Id}.", profile.ServiceName, operation.Id);
                     stopErrors.Add(ex);
@@ -157,7 +165,7 @@ public class WhisperPluginExecutor
 
             return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, "Speech engine uninstalled.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -168,8 +176,9 @@ public class WhisperPluginExecutor
         }
     }
 
-    private async Task StopOtherEnginesAsync(SttEngineProfile target, CancellationToken cancellationToken)
+    private async Task<bool> StopOtherEnginesAsync(SttEngineProfile target, CancellationToken cancellationToken)
     {
+        var allStopped = true;
         var others = SttEngineProfiles.All(_options)
             .Where(p => p.ServiceName != target.ServiceName && _applier.Supports(p));
 
@@ -179,11 +188,14 @@ public class WhisperPluginExecutor
             {
                 await _applier.StopAsync(other, cancellationToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
+                allStopped = false;
                 _logger.LogWarning(ex, "Could not stop STT service {Service} after installing {Target}.", other.ServiceName, target.ServiceName);
             }
         }
+
+        return allStopped;
     }
 
     private async Task StopNewcomerAsync(SttEngineProfile profile, bool newcomerStartAttempted)

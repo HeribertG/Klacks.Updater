@@ -233,6 +233,79 @@ public class WhisperPluginExecutorTests
     }
 
     [Test]
+    public async Task Install_HttpTimeoutWithoutRequestedCancellation_FailsAndStopsNewcomer()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.Received(1).StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), CancellationToken.None);
+        await _providerStore.DidNotReceive().UpsertEnabledAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_RequestedCancellation_StopsNewcomerAndRethrows()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        using var source = new CancellationTokenSource();
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                source.Cancel();
+                return Task.FromCanceled(source.Token);
+            });
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId), source.Token));
+
+        await _applier.Received(1).StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), CancellationToken.None);
+    }
+
+    [Test]
+    public async Task Install_RequestedCancellation_SameEngine_StopsNothing()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        using var source = new CancellationTokenSource();
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                source.Cancel();
+                return Task.FromCanceled(source.Token);
+            });
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasLarge, LargeModelId), source.Token));
+
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_StopFailureOfOtherEngine_IsReportedInTheSuccessMessage()
+    {
+        _applier.StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("no such service"));
+
+        var result = await _executor.ExecuteAsync(InstallOp());
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
+        result.Message.ShouldEndWith(WhisperPluginExecutor.PreviousEngineStopFailedNote);
+    }
+
+    [Test]
+    public async Task Install_StopOfOtherEngineSucceeds_HasNoWarningNote()
+    {
+        var result = await _executor.ExecuteAsync(InstallOp());
+
+        result.Message.ShouldNotContain("failed");
+    }
+
+    [Test]
     public async Task Install_SameEngineModelSwitchFails_StopsNothing()
     {
         _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);

@@ -21,6 +21,7 @@ public class NativeBundleApplierTests
     private string _root = string.Empty;
     private byte[] _bundle = [];
     private IServiceController _service = null!;
+    private ISttServiceLifecycle _stt = null!;
     private IVersionLinkSwitcher _links = null!;
     private List<string> _calls = null!;
 
@@ -34,6 +35,9 @@ public class NativeBundleApplierTests
         _service = Substitute.For<IServiceController>();
         _service.StopAsync(Arg.Any<CancellationToken>()).Returns(_ => Record("stop"));
         _service.StartAsync(Arg.Any<CancellationToken>()).Returns(_ => Record("start"));
+        _stt = Substitute.For<ISttServiceLifecycle>();
+        _stt.StopAsync(Arg.Any<CancellationToken>()).Returns(_ => Record("stt-stop"));
+        _stt.StartIfAutomaticAsync(Arg.Any<CancellationToken>()).Returns(_ => Record("stt-start"));
         _links = Substitute.For<IVersionLinkSwitcher>();
         _links.SwitchAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call => Record("switch:" + Path.GetFileName(call.ArgAt<string>(1))));
@@ -68,7 +72,7 @@ public class NativeBundleApplierTests
         var options = Options.Create(new UpdaterOptions { NativeProgramRoot = _root, NativeRetainedVersions = retainedVersions });
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(NativeBundleApplier.HttpClientName).Returns(_ => new HttpClient(new StaticBundleHandler(_bundle)));
-        return new NativeBundleApplier(options, factory, _service, _links, NullLogger<NativeBundleApplier>.Instance);
+        return new NativeBundleApplier(options, factory, _service, _stt, _links, NullLogger<NativeBundleApplier>.Instance);
     }
 
     private async Task<string> BundleSha256Async()
@@ -96,8 +100,29 @@ public class NativeBundleApplierTests
         await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
 
         File.Exists(Path.Combine(_root, "versions", "1.2.0", "app", "Klacks.Api.dll")).ShouldBeTrue();
-        _calls.ShouldBe(["stop", "switch:1.2.0", "start"]);
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "stt-start", "start"]);
         Directory.EnumerateFileSystemEntries(Path.Combine(_root, "staging")).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Activate_still_switches_and_starts_when_the_stt_service_cannot_be_stopped()
+    {
+        _stt.StopAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromException(new InvalidOperationException("stuck")));
+
+        await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
+
+        _calls.ShouldBe(["stop", "switch:1.2.0", "stt-start", "start"]);
+    }
+
+    [Test]
+    public async Task Activate_does_not_fail_the_update_when_the_stt_service_cannot_be_started()
+    {
+        _stt.StartIfAutomaticAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new InvalidOperationException("no start")));
+
+        await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
+
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "start"]);
     }
 
     [Test]
@@ -128,7 +153,7 @@ public class NativeBundleApplierTests
 
         await CreateApplier().ActivateVersionAsync("1.1.0");
 
-        _calls.ShouldBe(["stop", "switch:1.1.0", "start"]);
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.1.0", "stt-start", "start"]);
     }
 
     [Test]

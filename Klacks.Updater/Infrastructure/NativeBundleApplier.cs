@@ -3,13 +3,15 @@
 /// <summary>
 /// Native applier: downloads the release bundle, refuses it unless its SHA-256 matches the signed hash on the update
 /// row, unpacks it into versions/&lt;target&gt; via a staging directory, then stops the service, points "current" at the
-/// new version and starts it again (the API migrates on start). A rollback only switches "current" back to a version
+/// new version and starts it again (the API migrates on start). The speech recognition side service is paused around
+/// the switch (best effort, never fails the update) so it does not run binaries of a replaced version directory. A rollback only switches "current" back to a version
 /// that is still on disk; old versions beyond the retention count are removed after a successful switch, never the
 /// current or the previous one.
 /// </summary>
 /// <param name="options">Updater configuration (program root, retained versions)</param>
 /// <param name="httpClientFactory">Creates the client for the bundle download</param>
 /// <param name="serviceController">Stops and starts the Klacks service</param>
+/// <param name="sttServiceLifecycle">Pauses and resumes the speech recognition service around the switch</param>
 /// <param name="linkSwitcher">Points "current" at a version directory</param>
 /// <param name="logger">Logger for diagnostic output</param>
 
@@ -34,6 +36,7 @@ public class NativeBundleApplier : IUpdateApplier
     private readonly NativeInstallLayout _layout;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IServiceController _serviceController;
+    private readonly ISttServiceLifecycle _sttServiceLifecycle;
     private readonly IVersionLinkSwitcher _linkSwitcher;
     private readonly ILogger<NativeBundleApplier> _logger;
     private readonly string? _updaterVersionDirectory;
@@ -42,6 +45,7 @@ public class NativeBundleApplier : IUpdateApplier
         IOptions<UpdaterOptions> options,
         IHttpClientFactory httpClientFactory,
         IServiceController serviceController,
+        ISttServiceLifecycle sttServiceLifecycle,
         IVersionLinkSwitcher linkSwitcher,
         ILogger<NativeBundleApplier> logger)
     {
@@ -49,6 +53,7 @@ public class NativeBundleApplier : IUpdateApplier
         _layout = new NativeInstallLayout(_options.NativeProgramRoot);
         _httpClientFactory = httpClientFactory;
         _serviceController = serviceController;
+        _sttServiceLifecycle = sttServiceLifecycle;
         _linkSwitcher = linkSwitcher;
         _logger = logger;
         // The updater runs from current\updater; its files stay locked in the version directory it was started from,
@@ -138,9 +143,35 @@ public class NativeBundleApplier : IUpdateApplier
     private async Task SwitchToAsync(string versionDirectory, CancellationToken cancellationToken)
     {
         await _serviceController.StopAsync(cancellationToken);
+        await TryPauseSttAsync(cancellationToken);
         await _linkSwitcher.SwitchAsync(_layout.CurrentLink, versionDirectory, cancellationToken);
         _logger.LogInformation("Switched {Link} to {Directory}.", _layout.CurrentLink, versionDirectory);
+        await TryResumeSttAsync(cancellationToken);
         await _serviceController.StartAsync(cancellationToken);
+    }
+
+    private async Task TryPauseSttAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _sttServiceLifecycle.StopAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Could not stop the speech recognition service before the version switch.");
+        }
+    }
+
+    private async Task TryResumeSttAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _sttServiceLifecycle.StartIfAutomaticAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Could not start the speech recognition service after the version switch.");
+        }
     }
 
     private string? ReadCurrentTarget()

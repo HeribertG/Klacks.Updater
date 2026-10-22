@@ -23,7 +23,7 @@ public static class UpdaterConstants
 
     public static readonly TimeSpan WhisperReadyTimeout = TimeSpan.FromMinutes(10);
 
-    public static readonly TimeSpan WhisperModelInstallTimeout = TimeSpan.FromMinutes(25);
+    public static readonly TimeSpan WhisperModelInstallTimeout = TimeSpan.FromMinutes(35);
     public const string NativeUpdaterServiceName = "KlacksUpdater";
     public const string NativeDataRootKey = "Hosting:DataRoot";
     public const string NativeConfigDirectoryName = "config";

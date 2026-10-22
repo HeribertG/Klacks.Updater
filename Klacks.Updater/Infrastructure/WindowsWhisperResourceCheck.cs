@@ -2,15 +2,17 @@
 
 /// <summary>
 /// Capacity gate for native Windows installations: free physical memory from kernel32 GlobalMemoryStatusEx and free
-/// disk of the drive that holds the program root. Probes that fail are skipped with a warning so they never block an
+/// disk of the drive that holds the models (the data root, else the program root). Probes that fail are skipped with a warning so they never block an
 /// install.
 /// </summary>
-/// <param name="options">Deployment configuration (NativeProgramRoot selects the drive probed for free disk)</param>
+/// <param name="options">Deployment configuration (NativeProgramRoot is the fallback drive probed for free disk)</param>
+/// <param name="configuration">Host configuration; Hosting:DataRoot holds the models and selects the drive probed first</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -22,11 +24,16 @@ public class WindowsWhisperResourceCheck : IWhisperResourceCheck
     private const string Kernel32 = "kernel32.dll";
 
     private readonly UpdaterOptions _options;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<WindowsWhisperResourceCheck> _logger;
 
-    public WindowsWhisperResourceCheck(IOptions<UpdaterOptions> options, ILogger<WindowsWhisperResourceCheck> logger)
+    public WindowsWhisperResourceCheck(
+        IOptions<UpdaterOptions> options,
+        IConfiguration configuration,
+        ILogger<WindowsWhisperResourceCheck> logger)
     {
         _options = options.Value;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -67,10 +74,12 @@ public class WindowsWhisperResourceCheck : IWhisperResourceCheck
 
     private long? ReadAvailableDisk()
     {
-        var root = string.IsNullOrWhiteSpace(_options.NativeProgramRoot) ? null : Path.GetPathRoot(_options.NativeProgramRoot);
-        if (string.IsNullOrEmpty(root))
+        var root = ResourceCapacityEvaluator.ResolveProbeRoot(
+            _configuration[UpdaterConstants.NativeDataRootKey],
+            _options.NativeProgramRoot);
+        if (root is null)
         {
-            _logger.LogWarning("NativeProgramRoot is not configured; skipping disk check.");
+            _logger.LogWarning("Neither the data root nor NativeProgramRoot is configured; skipping disk check.");
             return null;
         }
 

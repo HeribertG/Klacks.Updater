@@ -2,13 +2,33 @@
 
 /// <summary>
 /// Compares measured free memory and disk against what an STT engine needs and builds the English rejection message.
-/// A value that could not be measured (null) is skipped, so a failed probe never blocks an install.
+/// A value that could not be measured (null) is skipped, so a failed probe never blocks an install. ResolveProbeRoot
+/// picks the drive whose free space matters: the one that holds the models (data root), else the program root.
 /// </summary>
 namespace Klacks.Updater.Infrastructure;
 
 public static class ResourceCapacityEvaluator
 {
     private const long BytesPerMegaByte = 1024 * 1024;
+
+    public static string? ResolveProbeRoot(string? dataRoot, string? programRoot)
+    {
+        foreach (var candidate in new[] { dataRoot, programRoot })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            var root = Path.GetPathRoot(candidate);
+            if (!string.IsNullOrEmpty(root))
+            {
+                return root;
+            }
+        }
+
+        return null;
+    }
 
     public static string? Evaluate(long? availableMemoryBytes, long? availableDiskBytes, long requiredMemoryBytes, long requiredDiskBytes)
     {

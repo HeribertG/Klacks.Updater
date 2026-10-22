@@ -35,8 +35,11 @@ if (mode == UpdaterMode.Native)
     });
     builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
+    builder.Services.PostConfigure<UpdaterOptions>(options =>
+        options.SttBaseUrl = SttServiceRegistration.ResolveNativeBaseUrl(options.SttBaseUrl));
     if (OperatingSystem.IsWindows())
     {
+        builder.Services.AddSingleton<ISttServiceLifecycle, WindowsSttServiceLifecycle>();
         builder.Services.AddSingleton<ISttServiceRegistrar, WindowsSttServiceRegistrar>();
         builder.Services.AddSingleton<IWhisperPluginApplier, WindowsSttServiceApplier>();
         builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
@@ -44,6 +47,7 @@ if (mode == UpdaterMode.Native)
     }
     else
     {
+        builder.Services.AddSingleton<ISttServiceLifecycle, NoOpSttServiceLifecycle>();
         builder.Services.AddSingleton<IWhisperPluginApplier, UnsupportedWhisperPluginApplier>();
         builder.Services.AddSingleton<IServiceController, LaunchdServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, SymbolicLinkSwitcher>();

@@ -1,9 +1,11 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
 /// <summary>
-/// Registers the KlacksStt Windows service (disabled, environment, failure actions, protected model directory) on
-/// installations that were created before the installer shipped it. Mirrors the KlacksStt part of Klacks.Api
-/// deploy/native/windows/Install-Klacks.ps1; the values come from SttServiceRegistration.
+/// Registers the KlacksStt Windows service (disabled, own virtual account, failure actions, protected model directory,
+/// environment) and converges a half-configured or outdated registration: the service is created only when missing, every
+/// other step is idempotent and re-applied, and the Environment value is written last as the "fully registered" marker.
+/// Mirrors the KlacksStt part of Klacks.Api deploy/native/windows/Install-Klacks.ps1; the values come from
+/// SttServiceRegistration.
 /// </summary>
 /// <param name="options">Updater configuration; NativeProgramRoot locates the current link, NativeSttServiceName names the service</param>
 /// <param name="configuration">Host configuration; Hosting:DataRoot is the native data root that holds stt-models</param>
@@ -12,7 +14,6 @@
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.ServiceProcess;
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
 using Microsoft.Extensions.Configuration;
@@ -25,7 +26,6 @@ namespace Klacks.Updater.Infrastructure;
 [SupportedOSPlatform("windows")]
 public class WindowsSttServiceRegistrar : ISttServiceRegistrar
 {
-    private const string ServiceControlExecutable = "sc.exe";
     private const string EnvironmentValueName = "Environment";
 
     private readonly UpdaterOptions _options;
@@ -45,40 +45,46 @@ public class WindowsSttServiceRegistrar : ISttServiceRegistrar
     public async Task EnsureRegisteredAsync(CancellationToken cancellationToken = default)
     {
         var serviceName = _options.NativeSttServiceName;
-        if (ServiceExists(serviceName))
+        var dataRoot = ResolveDataRoot();
+        var expectedEnvironment = SttServiceRegistration.BuildEnvironment(dataRoot);
+        var exists = WindowsServices.Exists(serviceName);
+        if (exists && SttServiceRegistration.IsFullyRegistered(ReadEnvironment(serviceName), expectedEnvironment))
         {
             return;
         }
 
         var executable = SttServiceRegistration.ResolveExecutable(new NativeInstallLayout(_options.NativeProgramRoot));
-        var dataRoot = ResolveDataRoot();
+        var modelDirectory = SttServiceRegistration.ModelDirectory(dataRoot);
 
         _logger.LogInformation("Registering native STT service {Service} (disabled).", serviceName);
 
-        CreateProtectedModelDirectory(SttServiceRegistration.ModelDirectory(dataRoot));
+        ApplyModelDirectoryAcl(modelDirectory, serviceSid: null);
 
-        await ProcessRunner.RunAsync(
-            ServiceControlExecutable,
-            SttServiceRegistration.BuildCreateArguments(serviceName, executable),
-            cancellationToken: cancellationToken);
+        if (!exists)
+        {
+            await RunServiceControlAsync(SttServiceRegistration.BuildCreateArguments(serviceName, executable), cancellationToken);
+        }
 
-        WriteEnvironment(serviceName, SttServiceRegistration.BuildEnvironment(dataRoot));
+        await RunServiceControlAsync(SttServiceRegistration.BuildAccountArguments(serviceName), cancellationToken);
+        await RunServiceControlAsync(SttServiceRegistration.BuildSidTypeArguments(serviceName), cancellationToken);
+        await RunServiceControlAsync(SttServiceRegistration.BuildFailureArguments(serviceName), cancellationToken);
+        await RunServiceControlAsync(SttServiceRegistration.BuildFailureFlagArguments(serviceName), cancellationToken);
 
-        await ProcessRunner.RunAsync(
-            ServiceControlExecutable,
-            SttServiceRegistration.BuildFailureArguments(serviceName),
-            cancellationToken: cancellationToken);
-        await ProcessRunner.RunAsync(
-            ServiceControlExecutable,
-            SttServiceRegistration.BuildFailureFlagArguments(serviceName),
-            cancellationToken: cancellationToken);
+        ApplyModelDirectoryAcl(modelDirectory, new SecurityIdentifier(ServiceSid.FromName(serviceName)));
+
+        WriteEnvironment(serviceName, expectedEnvironment);
     }
 
-    private static bool ServiceExists(string serviceName) =>
-        ServiceController.GetServices()
-            .Any(service => string.Equals(service.ServiceName, serviceName, StringComparison.OrdinalIgnoreCase));
+    private static Task RunServiceControlAsync(string[] arguments, CancellationToken cancellationToken) =>
+        ProcessRunner.RunAsync(SttServiceRegistration.ServiceControlExecutable, arguments, cancellationToken: cancellationToken);
 
-    private static void CreateProtectedModelDirectory(string path)
+    private static string[]? ReadEnvironment(string serviceName)
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(SttServiceRegistration.ServiceRegistryPath(serviceName));
+        return key?.GetValue(EnvironmentValueName) as string[];
+    }
+
+    private static void ApplyModelDirectoryAcl(string path, SecurityIdentifier? serviceSid)
     {
         var directory = Directory.CreateDirectory(path);
 
@@ -86,16 +92,24 @@ public class WindowsSttServiceRegistrar : ISttServiceRegistrar
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         foreach (var sidType in new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
         {
-            security.AddAccessRule(new FileSystemAccessRule(
-                new SecurityIdentifier(sidType, null),
-                FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
-                PropagationFlags.None,
-                AccessControlType.Allow));
+            security.AddAccessRule(CreateRule(new SecurityIdentifier(sidType, null), FileSystemRights.FullControl));
+        }
+
+        if (serviceSid is not null)
+        {
+            security.AddAccessRule(CreateRule(serviceSid, FileSystemRights.Modify));
         }
 
         directory.SetAccessControl(security);
     }
+
+    private static FileSystemAccessRule CreateRule(SecurityIdentifier identity, FileSystemRights rights) =>
+        new(
+            identity,
+            rights,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None,
+            AccessControlType.Allow);
 
     private static void WriteEnvironment(string serviceName, string[] environment)
     {

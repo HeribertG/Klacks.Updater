@@ -51,6 +51,14 @@ public class UpdaterOptions
 
     public string WhisperBaseUrl { get; set; } = "http://whisper-stt:8000";
 
+    public string SttServiceName { get; set; } = "klacks-stt";
+
+    public string SttComposeProfile { get; set; } = "parakeet";
+
+    public string SttBaseUrl { get; set; } = "http://klacks-stt:8000";
+
+    public string NativeSttServiceName { get; set; } = "KlacksStt";
+
     public UpdaterMode Mode { get; set; } = UpdaterMode.Docker;
 
     public string NativeProgramRoot { get; set; } = string.Empty;

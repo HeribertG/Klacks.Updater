@@ -17,7 +17,13 @@ public static class WhisperPluginConstants
 
     public const string ConnectionTypeRest = "rest";
 
+    public const string ParakeetProviderName = "Parakeet (self-hosted)";
+
     public const string ModelAliasSmall = "small";
+
+    public const string ModelAliasLarge = "large-v3-turbo";
+
+    public const string ModelAliasParakeet = "parakeet-v3";
 
     public const string ModelsPath = "/v1/models";
 
@@ -28,4 +34,8 @@ public static class WhisperPluginConstants
     public const long LargeModelRequiredMemoryBytes = 2L * 1024 * 1024 * 1024;
 
     public const long LargeModelRequiredDiskBytes = 3L * 1024 * 1024 * 1024;
+
+    public const long ParakeetRequiredMemoryBytes = 2L * 1024 * 1024 * 1024;
+
+    public const long ParakeetRequiredDiskBytes = 1_500L * 1024 * 1024;
 }

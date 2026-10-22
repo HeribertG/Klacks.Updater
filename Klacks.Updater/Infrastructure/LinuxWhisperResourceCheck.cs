@@ -19,7 +19,6 @@ public class LinuxWhisperResourceCheck : IWhisperResourceCheck
     private const string MemInfoPath = "/proc/meminfo";
     private const string MemAvailableKey = "MemAvailable:";
     private const long BytesPerKiloByte = 1024;
-    private const long BytesPerMegaByte = 1024 * 1024;
 
     private readonly UpdaterOptions _options;
     private readonly ILogger<LinuxWhisperResourceCheck> _logger;
@@ -32,19 +31,11 @@ public class LinuxWhisperResourceCheck : IWhisperResourceCheck
 
     public async Task<string?> CheckAsync(long requiredMemoryBytes, long requiredDiskBytes, CancellationToken cancellationToken = default)
     {
-        var availableMemory = await ReadAvailableMemoryAsync(cancellationToken);
-        if (availableMemory is not null && availableMemory < requiredMemoryBytes)
-        {
-            return $"Not enough free memory: {availableMemory / BytesPerMegaByte} MB available, {requiredMemoryBytes / BytesPerMegaByte} MB required.";
-        }
-
-        var availableDisk = ReadAvailableDisk();
-        if (availableDisk is not null && availableDisk < requiredDiskBytes)
-        {
-            return $"Not enough free disk space: {availableDisk / BytesPerMegaByte} MB available, {requiredDiskBytes / BytesPerMegaByte} MB required.";
-        }
-
-        return null;
+        return ResourceCapacityEvaluator.Evaluate(
+            await ReadAvailableMemoryAsync(cancellationToken),
+            ReadAvailableDisk(),
+            requiredMemoryBytes,
+            requiredDiskBytes);
     }
 
     private async Task<long?> ReadAvailableMemoryAsync(CancellationToken cancellationToken)

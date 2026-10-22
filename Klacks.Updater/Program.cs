@@ -60,7 +60,15 @@ builder.Services.AddSingleton<IArtifactVerifier, RsaArtifactVerifier>();
 builder.Services.AddSingleton<IBackupRetentionService, FileBackupRetentionService>();
 builder.Services.AddSingleton<IWhisperModelInstaller, HttpWhisperModelInstaller>();
 builder.Services.AddSingleton<IWhisperProviderStore, NpgsqlWhisperProviderStore>();
-builder.Services.AddSingleton<IWhisperResourceCheck, LinuxWhisperResourceCheck>();
+if (mode == UpdaterMode.Native && OperatingSystem.IsWindows())
+{
+    builder.Services.AddSingleton<IWhisperResourceCheck, WindowsWhisperResourceCheck>();
+}
+else
+{
+    builder.Services.AddSingleton<IWhisperResourceCheck, LinuxWhisperResourceCheck>();
+}
+
 builder.Services.AddSingleton<UpdateExecutor>();
 builder.Services.AddSingleton<WhisperPluginExecutor>();
 builder.Services.AddHostedService<Worker>();

@@ -1,7 +1,5 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
-using Klacks.Updater.Application;
-
 namespace Klacks.Updater.Domain;
 
 /// <summary>

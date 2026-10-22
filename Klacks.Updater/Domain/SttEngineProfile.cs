@@ -1,6 +1,6 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
-namespace Klacks.Updater.Application;
+namespace Klacks.Updater.Domain;
 
 /// <summary>
 /// One self-hosted speech-recognition engine the updater can install: the model alias that selects it, the compose

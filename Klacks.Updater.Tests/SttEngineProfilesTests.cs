@@ -3,6 +3,7 @@
 namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
+using Klacks.Updater.Domain;
 using NUnit.Framework;
 using Shouldly;
 

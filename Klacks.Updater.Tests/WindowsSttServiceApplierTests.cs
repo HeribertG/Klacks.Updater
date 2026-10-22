@@ -4,6 +4,7 @@ namespace Klacks.Updater.Tests;
 
 using System.Runtime.Versioning;
 using Klacks.Updater.Application;
+using Klacks.Updater.Domain;
 using Klacks.Updater.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

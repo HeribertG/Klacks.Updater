@@ -5,6 +5,8 @@
 /// Klacks.Stt) using the configured service names and URLs. Exactly one engine runs at a time, so All lists every
 /// engine that has to be stopped when another one is installed.
 /// </summary>
+using Klacks.Updater.Domain;
+
 namespace Klacks.Updater.Application;
 
 public static class SttEngineProfiles

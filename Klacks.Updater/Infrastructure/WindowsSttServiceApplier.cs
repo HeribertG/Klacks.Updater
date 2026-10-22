@@ -7,7 +7,6 @@
 /// </summary>
 /// <param name="options">Updater configuration; NativeSttServiceName names the Windows service</param>
 /// <param name="logger">Logger for diagnostic output</param>
-
 using System.Runtime.Versioning;
 using System.ServiceProcess;
 using Klacks.Updater.Application;
@@ -21,6 +20,9 @@ namespace Klacks.Updater.Infrastructure;
 public class WindowsSttServiceApplier : IWhisperPluginApplier
 {
     private const string ServiceControlExecutable = "sc.exe";
+    private const string ConfigCommand = "config";
+    private const string StartAuto = "start= auto";
+    private const string StartDisabled = "start= disabled";
 
     private readonly UpdaterOptions _options;
     private readonly ILogger<WindowsSttServiceApplier> _logger;
@@ -40,7 +42,7 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
 
         await ProcessRunner.RunAsync(
             ServiceControlExecutable,
-            $"config {serviceName} start= auto",
+            $"{ConfigCommand} {serviceName} {StartAuto}",
             cancellationToken: cancellationToken);
 
         using var service = new ServiceController(serviceName);
@@ -49,7 +51,7 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
             service.Start();
         }
 
-        service.WaitForStatus(ServiceControllerStatus.Running, UpdaterConstants.ServiceStartTimeout);
+        service.WaitForStatus(ServiceControllerStatus.Running, UpdaterConstants.ServiceStateTimeout);
     }
 
     public async Task StopAsync(SttEngineProfile profile, CancellationToken cancellationToken = default)
@@ -57,8 +59,9 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
         var serviceName = _options.NativeSttServiceName;
         _logger.LogInformation("Stopping native STT service {Service}.", serviceName);
 
-        using (var service = new ServiceController(serviceName))
+        try
         {
+            using var service = new ServiceController(serviceName);
             if (service.Status is not (ServiceControllerStatus.Stopped or ServiceControllerStatus.StopPending))
             {
                 service.Stop();
@@ -66,10 +69,12 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
 
             service.WaitForStatus(ServiceControllerStatus.Stopped, UpdaterConstants.ServiceStateTimeout);
         }
-
-        await ProcessRunner.RunAsync(
-            ServiceControlExecutable,
-            $"config {serviceName} start= disabled",
-            cancellationToken: cancellationToken);
+        finally
+        {
+            await ProcessRunner.RunAsync(
+                ServiceControlExecutable,
+                $"{ConfigCommand} {serviceName} {StartDisabled}",
+                cancellationToken: cancellationToken);
+        }
     }
 }

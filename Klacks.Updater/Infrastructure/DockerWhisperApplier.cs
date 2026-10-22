@@ -42,12 +42,18 @@ public class DockerWhisperApplier : IWhisperPluginApplier
     public async Task StopAsync(SttEngineProfile profile, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Stopping STT service {Service}.", profile.ServiceName);
-        await ProcessRunner.RunAsync(
-            "docker",
-            $"compose --profile {profile.ComposeProfile} stop {profile.ServiceName}",
-            _options.ComposeProjectDir,
-            cancellationToken: cancellationToken);
-        await PersistProfileAsync(profile, enable: false, cancellationToken);
+        try
+        {
+            await ProcessRunner.RunAsync(
+                "docker",
+                $"compose --profile {profile.ComposeProfile} stop {profile.ServiceName}",
+                _options.ComposeProjectDir,
+                cancellationToken: cancellationToken);
+        }
+        finally
+        {
+            await PersistProfileAsync(profile, enable: false, cancellationToken);
+        }
     }
 
     private async Task PersistProfileAsync(SttEngineProfile profile, bool enable, CancellationToken cancellationToken)

@@ -55,6 +55,8 @@ if (mode == UpdaterMode.Native)
 }
 else
 {
+    builder.Services.AddSingleton<IProcessRunner, SystemProcessRunner>();
+    builder.Services.AddSingleton<ISttTagSynchronizer, DockerSttTagSynchronizer>();
     builder.Services.AddSingleton<IUpdateApplier, DockerApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, PgDumpBackupService>();
     builder.Services.AddSingleton<IWhisperPluginApplier, DockerWhisperApplier>();

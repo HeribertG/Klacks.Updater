@@ -33,6 +33,8 @@ public class UpdaterOptions
 
     public string ApiTagEnvVar { get; set; } = "KLACKS_API_TAG";
 
+    public string SttTagEnvVar { get; set; } = "KLACKS_STT_TAG";
+
     public string UiImageRepository { get; set; } = string.Empty;
 
     public string UiServiceName { get; set; } = "klacks-ui";

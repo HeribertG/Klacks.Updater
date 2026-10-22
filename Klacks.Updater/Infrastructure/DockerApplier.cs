@@ -6,9 +6,13 @@
 /// the API container triggers its on-boot migration. When a UI image repository is configured, the UI
 /// service is activated at the same tag right after the API (so updates and rollbacks keep API and UI
 /// in lockstep). Once both services run, the activated tags are persisted in the compose .env file so a
-/// reboot or a manual `docker compose up` resolves the same version. Never touches the updater itself.
+/// reboot or a manual `docker compose up` resolves the same version. The speech-service tag pinned by the API image label
+/// is persisted with them and the active klacks-stt service is moved to it afterwards (best effort, never fails the update).
+/// Never touches the updater itself.
 /// </summary>
 /// <param name="options">Deployment configuration (compose dir, service name, image repository, tag env var)</param>
+/// <param name="runner">Runs the docker CLI</param>
+/// <param name="sttTagSynchronizer">Reads the pinned speech-service tag from the API image and restarts the speech service</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
@@ -22,11 +26,19 @@ public class DockerApplier : IUpdateApplier
     private const string Docker = "docker";
 
     private readonly UpdaterOptions _options;
+    private readonly IProcessRunner _runner;
+    private readonly ISttTagSynchronizer _sttTagSynchronizer;
     private readonly ILogger<DockerApplier> _logger;
 
-    public DockerApplier(IOptions<UpdaterOptions> options, ILogger<DockerApplier> logger)
+    public DockerApplier(
+        IOptions<UpdaterOptions> options,
+        IProcessRunner runner,
+        ISttTagSynchronizer sttTagSynchronizer,
+        ILogger<DockerApplier> logger)
     {
         _options = options.Value;
+        _runner = runner;
+        _sttTagSynchronizer = sttTagSynchronizer;
         _logger = logger;
     }
 
@@ -44,7 +56,7 @@ public class DockerApplier : IUpdateApplier
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        await ProcessRunner.RunAsync(Docker, ["compose", "stop", _options.ApiServiceName], _options.ComposeProjectDir, cancellationToken: cancellationToken);
+        await _runner.RunAsync(Docker, ["compose", "stop", _options.ApiServiceName], _options.ComposeProjectDir, cancellationToken: cancellationToken);
     }
 
     private async Task ActivateTagAsync(string tag, CancellationToken cancellationToken)
@@ -57,17 +69,29 @@ public class DockerApplier : IUpdateApplier
         }
 
         _logger.LogInformation("Activating {Service} tag {Tag}.", _options.ApiServiceName, tag);
-        await ProcessRunner.RunAsync(Docker, ["compose", "pull", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
-        await ProcessRunner.RunAsync(Docker, ["compose", "up", "-d", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+        await _runner.RunAsync(Docker, ["compose", "pull", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+
+        var sttUpdate = await _sttTagSynchronizer.PlanAsync(tag, cancellationToken);
+        if (sttUpdate is not null)
+        {
+            env[_options.SttTagEnvVar] = sttUpdate.Tag;
+        }
+
+        await _runner.RunAsync(Docker, ["compose", "up", "-d", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
 
         if (hasUi)
         {
             _logger.LogInformation("Activating {Service} tag {Tag}.", _options.UiServiceName, tag);
-            await ProcessRunner.RunAsync(Docker, ["compose", "pull", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
-            await ProcessRunner.RunAsync(Docker, ["compose", "up", "-d", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+            await _runner.RunAsync(Docker, ["compose", "pull", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+            await _runner.RunAsync(Docker, ["compose", "up", "-d", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
         }
 
         await PersistTagsAsync(env, cancellationToken);
+
+        if (sttUpdate is not null)
+        {
+            await _sttTagSynchronizer.ApplyAsync(sttUpdate, env, cancellationToken);
+        }
     }
 
     // Written only after the services are up: until 2026-09-10 the tags lived solely in the process

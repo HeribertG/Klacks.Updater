@@ -12,6 +12,7 @@ public static class ComposeEnvFile
 {
     private const string ComposeProfilesPrefix = "COMPOSE_PROFILES=";
     private const char KeyValueSeparator = '=';
+    private static readonly char[] QuoteCharacters = ['"', '\''];
 
     public static string[] WithValue(string[] lines, string key, string value)
     {
@@ -30,6 +31,24 @@ public static class ComposeEnvFile
         var result = (string[])lines.Clone();
         result[index] = entry;
         return result;
+    }
+
+    public static string? GetValue(string[] lines, string key)
+    {
+        var index = FindKeyLine(lines, key);
+        if (index < 0)
+        {
+            return null;
+        }
+
+        var value = lines[index].TrimStart()[(key.Length + 1)..].Trim().Trim(QuoteCharacters);
+        return value.Length == 0 ? null : value;
+    }
+
+    public static bool HasProfile(string[] lines, string profile)
+    {
+        var index = FindProfilesLine(lines);
+        return index >= 0 && ParseTokens(lines[index]).Contains(profile, StringComparer.OrdinalIgnoreCase);
     }
 
     private static int FindKeyLine(string[] lines, string key)

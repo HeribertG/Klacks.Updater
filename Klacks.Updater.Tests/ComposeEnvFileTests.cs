@@ -110,4 +110,43 @@ public class ComposeEnvFileTests
 
         result.ShouldBe(["KLACKS_API_TAG_PREVIOUS=1.0.24", "KLACKS_API_TAG=1.0.27"]);
     }
+
+    [Test]
+    public void GetValue_returns_value_of_existing_entry()
+    {
+        var lines = new[] { "POSTGRES_PASSWORD=secret", "KLACKS_STT_TAG=1.2.0" };
+
+        ComposeEnvFile.GetValue(lines, "KLACKS_STT_TAG").ShouldBe("1.2.0");
+    }
+
+    [TestCase("KLACKS_STT_TAG=\"1.2.0\"")]
+    [TestCase("KLACKS_STT_TAG='1.2.0'")]
+    [TestCase("  KLACKS_STT_TAG= 1.2.0 ")]
+    public void GetValue_strips_quotes_and_whitespace(string line)
+    {
+        ComposeEnvFile.GetValue([line], "KLACKS_STT_TAG").ShouldBe("1.2.0");
+    }
+
+    [Test]
+    public void GetValue_returns_null_when_missing_or_empty_or_only_prefix_matches()
+    {
+        ComposeEnvFile.GetValue(["KLACKS_STT_TAG_OLD=1.0.0"], "KLACKS_STT_TAG").ShouldBeNull();
+        ComposeEnvFile.GetValue(["KLACKS_STT_TAG="], "KLACKS_STT_TAG").ShouldBeNull();
+        ComposeEnvFile.GetValue([], "KLACKS_STT_TAG").ShouldBeNull();
+    }
+
+    [TestCase("COMPOSE_PROFILES=parakeet", true)]
+    [TestCase("COMPOSE_PROFILES=updater,Parakeet", true)]
+    [TestCase("COMPOSE_PROFILES=whisper", false)]
+    [TestCase("POSTGRES_PASSWORD=parakeet", false)]
+    public void HasProfile_detects_profile_token(string line, bool expected)
+    {
+        ComposeEnvFile.HasProfile([line], "parakeet").ShouldBe(expected);
+    }
+
+    [Test]
+    public void HasProfile_is_false_without_profiles_line()
+    {
+        ComposeEnvFile.HasProfile([], "parakeet").ShouldBeFalse();
+    }
 }

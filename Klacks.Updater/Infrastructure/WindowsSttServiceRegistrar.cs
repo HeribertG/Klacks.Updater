@@ -58,19 +58,17 @@ public class WindowsSttServiceRegistrar : ISttServiceRegistrar
 
         _logger.LogInformation("Registering native STT service {Service} (disabled).", serviceName);
 
-        ApplyModelDirectoryAcl(modelDirectory, serviceSid: null);
+        ApplyModelDirectoryAcl(modelDirectory, new SecurityIdentifier(ServiceSid.FromName(serviceName)));
 
         if (!exists)
         {
             await RunServiceControlAsync(SttServiceRegistration.BuildCreateArguments(serviceName, executable), cancellationToken);
         }
 
-        await RunServiceControlAsync(SttServiceRegistration.BuildAccountArguments(serviceName), cancellationToken);
         await RunServiceControlAsync(SttServiceRegistration.BuildSidTypeArguments(serviceName), cancellationToken);
+        await RunServiceControlAsync(SttServiceRegistration.BuildAccountArguments(serviceName), cancellationToken);
         await RunServiceControlAsync(SttServiceRegistration.BuildFailureArguments(serviceName), cancellationToken);
         await RunServiceControlAsync(SttServiceRegistration.BuildFailureFlagArguments(serviceName), cancellationToken);
-
-        ApplyModelDirectoryAcl(modelDirectory, new SecurityIdentifier(ServiceSid.FromName(serviceName)));
 
         WriteEnvironment(serviceName, expectedEnvironment);
     }
@@ -84,7 +82,7 @@ public class WindowsSttServiceRegistrar : ISttServiceRegistrar
         return key?.GetValue(EnvironmentValueName) as string[];
     }
 
-    private static void ApplyModelDirectoryAcl(string path, SecurityIdentifier? serviceSid)
+    private static void ApplyModelDirectoryAcl(string path, SecurityIdentifier serviceSid)
     {
         var directory = Directory.CreateDirectory(path);
 
@@ -95,10 +93,7 @@ public class WindowsSttServiceRegistrar : ISttServiceRegistrar
             security.AddAccessRule(CreateRule(new SecurityIdentifier(sidType, null), FileSystemRights.FullControl));
         }
 
-        if (serviceSid is not null)
-        {
-            security.AddAccessRule(CreateRule(serviceSid, FileSystemRights.Modify));
-        }
+        security.AddAccessRule(CreateRule(serviceSid, FileSystemRights.Modify));
 
         directory.SetAccessControl(security);
     }

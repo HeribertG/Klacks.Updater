@@ -19,6 +19,8 @@ namespace Klacks.Updater.Infrastructure;
 
 public class DockerApplier : IUpdateApplier
 {
+    private const string Docker = "docker";
+
     private readonly UpdaterOptions _options;
     private readonly ILogger<DockerApplier> _logger;
 
@@ -42,7 +44,7 @@ public class DockerApplier : IUpdateApplier
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        await ProcessRunner.RunAsync("docker", $"compose stop {_options.ApiServiceName}", _options.ComposeProjectDir, cancellationToken: cancellationToken);
+        await ProcessRunner.RunAsync(Docker, ["compose", "stop", _options.ApiServiceName], _options.ComposeProjectDir, cancellationToken: cancellationToken);
     }
 
     private async Task ActivateTagAsync(string tag, CancellationToken cancellationToken)
@@ -55,14 +57,14 @@ public class DockerApplier : IUpdateApplier
         }
 
         _logger.LogInformation("Activating {Service} tag {Tag}.", _options.ApiServiceName, tag);
-        await ProcessRunner.RunAsync("docker", $"compose pull {_options.ApiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
-        await ProcessRunner.RunAsync("docker", $"compose up -d {_options.ApiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
+        await ProcessRunner.RunAsync(Docker, ["compose", "pull", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+        await ProcessRunner.RunAsync(Docker, ["compose", "up", "-d", _options.ApiServiceName], _options.ComposeProjectDir, env, cancellationToken);
 
         if (hasUi)
         {
             _logger.LogInformation("Activating {Service} tag {Tag}.", _options.UiServiceName, tag);
-            await ProcessRunner.RunAsync("docker", $"compose pull {_options.UiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
-            await ProcessRunner.RunAsync("docker", $"compose up -d {_options.UiServiceName}", _options.ComposeProjectDir, env, cancellationToken);
+            await ProcessRunner.RunAsync(Docker, ["compose", "pull", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
+            await ProcessRunner.RunAsync(Docker, ["compose", "up", "-d", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
         }
 
         await PersistTagsAsync(env, cancellationToken);
@@ -89,7 +91,7 @@ public class DockerApplier : IUpdateApplier
 
             if (!ReferenceEquals(updated, lines))
             {
-                await File.WriteAllLinesAsync(envPath, updated, cancellationToken);
+                await AtomicFile.WriteAllLinesAsync(envPath, updated, cancellationToken);
                 _logger.LogInformation("Persisted image tags {Tags} in {Path}.", string.Join(", ", tags.Select(t => $"{t.Key}={t.Value}")), envPath);
             }
         }

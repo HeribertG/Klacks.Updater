@@ -3,8 +3,9 @@
 /// <summary>
 /// Starts/stops an STT engine's compose service (Whisper or Parakeet) via the docker CLI. The compose profile is passed
 /// explicitly so the service starts even though it is profile-gated in the customer compose file.
-/// Start persists the profile into the compose .env (COMPOSE_PROFILES) so manual compose runs keep
-/// the service; stop removes it again.
+/// Start first verifies that the compose file defines the service (an on-prem compose file that predates the engine
+/// does not), pulls its image (a failed pull is only logged) and persists the profile into the compose .env
+/// (COMPOSE_PROFILES) so manual compose runs keep the service; stop removes it again.
 /// </summary>
 /// <param name="options">Deployment configuration (compose dir)</param>
 /// <param name="logger">Logger for diagnostic output</param>
@@ -17,6 +18,8 @@ namespace Klacks.Updater.Infrastructure;
 
 public class DockerWhisperApplier : IWhisperPluginApplier
 {
+    private const string Docker = "docker";
+
     private readonly UpdaterOptions _options;
     private readonly ILogger<DockerWhisperApplier> _logger;
 
@@ -31,9 +34,22 @@ public class DockerWhisperApplier : IWhisperPluginApplier
     public async Task StartAsync(SttEngineProfile profile, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Starting STT service {Service}.", profile.ServiceName);
+
+        var services = await ProcessRunner.RunAsync(
+            Docker,
+            ["compose", "--profile", profile.ComposeProfile, "config", "--services"],
+            _options.ComposeProjectDir,
+            cancellationToken: cancellationToken);
+        if (!ComposeServices.Contains(services, profile.ServiceName))
+        {
+            throw new InvalidOperationException(ComposeServices.MissingServiceMessage(profile.ServiceName));
+        }
+
+        await PullImageAsync(profile, cancellationToken);
+
         await ProcessRunner.RunAsync(
-            "docker",
-            $"compose --profile {profile.ComposeProfile} up -d {profile.ServiceName}",
+            Docker,
+            ["compose", "--profile", profile.ComposeProfile, "up", "-d", profile.ServiceName],
             _options.ComposeProjectDir,
             cancellationToken: cancellationToken);
         await PersistProfileAsync(profile, enable: true, cancellationToken);
@@ -45,14 +61,30 @@ public class DockerWhisperApplier : IWhisperPluginApplier
         try
         {
             await ProcessRunner.RunAsync(
-                "docker",
-                $"compose --profile {profile.ComposeProfile} stop {profile.ServiceName}",
+                Docker,
+                ["compose", "--profile", profile.ComposeProfile, "stop", profile.ServiceName],
                 _options.ComposeProjectDir,
                 cancellationToken: cancellationToken);
         }
         finally
         {
             await PersistProfileAsync(profile, enable: false, cancellationToken);
+        }
+    }
+
+    private async Task PullImageAsync(SttEngineProfile profile, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ProcessRunner.RunAsync(
+                Docker,
+                ["compose", "--profile", profile.ComposeProfile, "pull", profile.ServiceName],
+                _options.ComposeProjectDir,
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Pulling the image of STT service {Service} failed; starting with the local image.", profile.ServiceName);
         }
     }
 
@@ -71,7 +103,7 @@ public class DockerWhisperApplier : IWhisperPluginApplier
 
             if (!ReferenceEquals(updated, lines))
             {
-                await File.WriteAllLinesAsync(envPath, updated, cancellationToken);
+                await AtomicFile.WriteAllLinesAsync(envPath, updated, cancellationToken);
                 _logger.LogInformation("Persisted COMPOSE_PROFILES change ({Profile}, enable={Enable}) in {Path}.", profile.ComposeProfile, enable, envPath);
             }
         }

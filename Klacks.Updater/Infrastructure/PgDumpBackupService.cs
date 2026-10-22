@@ -19,6 +19,7 @@ namespace Klacks.Updater.Infrastructure;
 
 public class PgDumpBackupService : IUpdateBackupService
 {
+    private const string Docker = "docker";
     private const string DumpHeader = "PostgreSQL database dump";
     private const string CreateTableMarker = "CREATE TABLE";
     private const string MaintenanceDatabase = "postgres";
@@ -39,8 +40,8 @@ public class PgDumpBackupService : IUpdateBackupService
         var hostPath = Path.Combine(_options.BackupDirectory, fileName);
 
         var dump = await ProcessRunner.RunAsync(
-            "docker",
-            $"exec {_options.PostgresContainer} pg_dump --clean --if-exists -U {_options.PostgresUser} -d {_options.PostgresDatabase}",
+            Docker,
+            ["exec", _options.PostgresContainer, "pg_dump", "--clean", "--if-exists", "-U", _options.PostgresUser, "-d", _options.PostgresDatabase],
             cancellationToken: cancellationToken);
 
         await File.WriteAllTextAsync(hostPath, dump, cancellationToken);
@@ -63,8 +64,8 @@ public class PgDumpBackupService : IUpdateBackupService
 
         _logger.LogWarning("Restoring database {Database} from {Path}: dropping and recreating it first.", _options.PostgresDatabase, backupRef);
         await ProcessRunner.RunWithStdinAsync(
-            "docker",
-            $"exec -i {_options.PostgresContainer} psql -v ON_ERROR_STOP=1 -U {_options.PostgresUser} -d {MaintenanceDatabase}",
+            Docker,
+            ["exec", "-i", _options.PostgresContainer, "psql", "-v", "ON_ERROR_STOP=1", "-U", _options.PostgresUser, "-d", MaintenanceDatabase],
             RecreateDatabaseScript(_options.PostgresDatabase, _options.PostgresUser),
             cancellationToken);
 
@@ -73,8 +74,8 @@ public class PgDumpBackupService : IUpdateBackupService
         NpgsqlConnection.ClearAllPools();
 
         await ProcessRunner.RunWithStdinAsync(
-            "docker",
-            $"exec -i {_options.PostgresContainer} psql -U {_options.PostgresUser} -d {_options.PostgresDatabase}",
+            Docker,
+            ["exec", "-i", _options.PostgresContainer, "psql", "-U", _options.PostgresUser, "-d", _options.PostgresDatabase],
             sql,
             cancellationToken);
     }

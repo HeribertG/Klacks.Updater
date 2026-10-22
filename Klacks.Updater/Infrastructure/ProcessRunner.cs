@@ -3,7 +3,9 @@
 /// <summary>
 /// Minimal async wrapper around an external process. Throws when the process exits non-zero so
 /// callers (applier/backup) surface failures to the executor, which then rolls back. The failure message carries stderr,
-/// or stdout when stderr is blank (sc.exe reports its errors on stdout), trimmed and truncated.
+/// or stdout when stderr is blank (sc.exe reports its errors on stdout), trimmed and truncated. Callers pass either a
+/// raw argument string or an argument list; the list form is escaped by the runtime and is the one to use whenever an
+/// argument comes from configuration or contains spaces.
 /// </summary>
 using System.Diagnostics;
 
@@ -15,18 +17,87 @@ public static class ProcessRunner
 
     private const string TruncationSuffix = "...";
 
-    public static async Task<string> RunAsync(
+    private const char ArgumentSeparator = ' ';
+
+    public static Task<string> RunAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,
         IDictionary<string, string>? environment = null,
         CancellationToken cancellationToken = default)
     {
+        var startInfo = CreateStartInfo(fileName, workingDirectory, environment);
+        startInfo.RedirectStandardOutput = true;
+        startInfo.Arguments = arguments;
+        return ExecuteAsync(startInfo, arguments, cancellationToken);
+    }
+
+    public static Task<string> RunAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        string? workingDirectory = null,
+        IDictionary<string, string>? environment = null,
+        CancellationToken cancellationToken = default)
+    {
+        var startInfo = CreateStartInfo(fileName, workingDirectory, environment);
+        startInfo.RedirectStandardOutput = true;
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return ExecuteAsync(startInfo, FormatArguments(arguments), cancellationToken);
+    }
+
+    public static Task RunWithStdinAsync(
+        string fileName,
+        string arguments,
+        string stdin,
+        CancellationToken cancellationToken = default,
+        IDictionary<string, string>? environment = null)
+    {
+        var startInfo = CreateStartInfo(fileName, null, environment);
+        startInfo.Arguments = arguments;
+        return ExecuteWithStdinAsync(startInfo, arguments, stdin, cancellationToken);
+    }
+
+    public static Task RunWithStdinAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        string stdin,
+        CancellationToken cancellationToken = default,
+        IDictionary<string, string>? environment = null)
+    {
+        var startInfo = CreateStartInfo(fileName, null, environment);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return ExecuteWithStdinAsync(startInfo, FormatArguments(arguments), stdin, cancellationToken);
+    }
+
+    public static string FormatArguments(IReadOnlyList<string> arguments) =>
+        string.Join(ArgumentSeparator, arguments);
+
+    public static string BuildFailureMessage(string fileName, string arguments, int exitCode, string stdout, string stderr)
+    {
+        var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+        var trimmed = detail.Trim();
+        if (trimmed.Length > MaxFailureOutputLength)
+        {
+            trimmed = trimmed[..MaxFailureOutputLength] + TruncationSuffix;
+        }
+
+        return $"'{fileName} {arguments}' exited {exitCode}: {trimmed}";
+    }
+
+    private static ProcessStartInfo CreateStartInfo(
+        string fileName, string? workingDirectory, IDictionary<string, string>? environment)
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -45,6 +116,12 @@ public static class ProcessRunner
             }
         }
 
+        return startInfo;
+    }
+
+    private static async Task<string> ExecuteAsync(
+        ProcessStartInfo startInfo, string displayArguments, CancellationToken cancellationToken)
+    {
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
@@ -57,36 +134,17 @@ public static class ProcessRunner
 
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException(BuildFailureMessage(fileName, arguments, process.ExitCode, stdout, stderr));
+            throw new InvalidOperationException(
+                BuildFailureMessage(startInfo.FileName, displayArguments, process.ExitCode, stdout, stderr));
         }
 
         return stdout;
     }
 
-    public static async Task RunWithStdinAsync(
-        string fileName,
-        string arguments,
-        string stdin,
-        CancellationToken cancellationToken = default,
-        IDictionary<string, string>? environment = null)
+    private static async Task ExecuteWithStdinAsync(
+        ProcessStartInfo startInfo, string displayArguments, string stdin, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardInput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        if (environment is not null)
-        {
-            foreach (var (key, value) in environment)
-            {
-                startInfo.Environment[key] = value;
-            }
-        }
+        startInfo.RedirectStandardInput = true;
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
@@ -99,19 +157,8 @@ public static class ProcessRunner
 
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException(BuildFailureMessage(fileName, arguments, process.ExitCode, string.Empty, stderr));
+            throw new InvalidOperationException(
+                BuildFailureMessage(startInfo.FileName, displayArguments, process.ExitCode, string.Empty, stderr));
         }
-    }
-
-    public static string BuildFailureMessage(string fileName, string arguments, int exitCode, string stdout, string stderr)
-    {
-        var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-        var trimmed = detail.Trim();
-        if (trimmed.Length > MaxFailureOutputLength)
-        {
-            trimmed = trimmed[..MaxFailureOutputLength] + TruncationSuffix;
-        }
-
-        return $"'{fileName} {arguments}' exited {exitCode}: {trimmed}";
     }
 }

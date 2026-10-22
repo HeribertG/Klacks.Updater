@@ -33,6 +33,36 @@ public class ProcessRunnerTests
     }
 
     [Test]
+    public void FormatArguments_joins_the_list_for_diagnostics()
+    {
+        ProcessRunner.FormatArguments(["config", "KlacksStt", "start=", "auto"]).ShouldBe("config KlacksStt start= auto");
+    }
+
+    [Test]
+    public async Task RunAsync_with_an_argument_list_passes_each_argument_unsplit()
+    {
+        var (fileName, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", new[] { "/c", "echo", "two words" })
+            : ("echo", new[] { "two words" });
+
+        var output = await ProcessRunner.RunAsync(fileName, arguments);
+
+        output.ShouldContain("two words");
+    }
+
+    [Test]
+    public async Task RunAsync_with_an_argument_list_reports_failures_with_the_formatted_arguments()
+    {
+        var (fileName, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", new[] { "/c", "exit", "3" })
+            : ("sh", new[] { "-c", "exit 3" });
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() => ProcessRunner.RunAsync(fileName, arguments));
+
+        exception.Message.ShouldContain("exited 3");
+    }
+
+    [Test]
     public async Task RunAsync_reports_stdout_when_process_fails_without_stderr()
     {
         var (fileName, arguments) = OperatingSystem.IsWindows()

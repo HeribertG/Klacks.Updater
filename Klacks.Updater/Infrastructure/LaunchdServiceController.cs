@@ -30,7 +30,7 @@ public class LaunchdServiceController : IServiceController
     {
         try
         {
-            await ProcessRunner.RunAsync(LaunchCtl, $"bootout {SystemDomain}/{_label}", cancellationToken: cancellationToken);
+            await ProcessRunner.RunAsync(LaunchCtl, ["bootout", $"{SystemDomain}/{_label}"], cancellationToken: cancellationToken);
         }
         catch (InvalidOperationException)
         {
@@ -41,6 +41,6 @@ public class LaunchdServiceController : IServiceController
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         var propertyList = Path.Combine(LaunchDaemonsDirectory, _label + PropertyListExtension);
-        await ProcessRunner.RunAsync(LaunchCtl, $"bootstrap {SystemDomain} \"{propertyList}\"", cancellationToken: cancellationToken);
+        await ProcessRunner.RunAsync(LaunchCtl, ["bootstrap", SystemDomain, propertyList], cancellationToken: cancellationToken);
     }
 }

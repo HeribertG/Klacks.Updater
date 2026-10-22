@@ -42,6 +42,24 @@ public class SharedContractFreezeTests
     }
 
     [Test]
+    public void WhisperModelIds_AreFrozen()
+    {
+        WhisperPluginConstants.SmallModelId.ShouldBe("Systran/faster-whisper-small");
+        WhisperPluginConstants.LargeModelId.ShouldBe("deepdml/faster-whisper-large-v3-turbo-ct2");
+        WhisperPluginConstants.ParakeetModelId.ShouldBe("parakeet-tdt-0.6b-v3-int8");
+    }
+
+    [Test]
+    public void WhisperOptionDefaults_AreFrozen()
+    {
+        var defaults = new UpdaterOptions();
+
+        defaults.WhisperServiceName.ShouldBe("whisper-stt");
+        defaults.WhisperComposeProfile.ShouldBe("whisper");
+        defaults.WhisperBaseUrl.ShouldBe("http://whisper-stt:8000");
+    }
+
+    [Test]
     public void SttEngineOptionNames_AreFrozen()
     {
         var names = typeof(UpdaterOptions).GetProperties().Select(p => p.Name).ToList();

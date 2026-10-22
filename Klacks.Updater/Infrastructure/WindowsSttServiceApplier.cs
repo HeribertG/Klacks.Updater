@@ -6,6 +6,7 @@
 /// back after a reboot. Whisper is Docker-only and therefore not supported here.
 /// </summary>
 /// <param name="options">Updater configuration; NativeSttServiceName names the Windows service</param>
+/// <param name="registrar">Registers the service first when an older installation does not have it yet</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using System.Runtime.Versioning;
 using System.ServiceProcess;
@@ -25,11 +26,16 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
     private const string StartDisabled = "start= disabled";
 
     private readonly UpdaterOptions _options;
+    private readonly ISttServiceRegistrar _registrar;
     private readonly ILogger<WindowsSttServiceApplier> _logger;
 
-    public WindowsSttServiceApplier(IOptions<UpdaterOptions> options, ILogger<WindowsSttServiceApplier> logger)
+    public WindowsSttServiceApplier(
+        IOptions<UpdaterOptions> options,
+        ISttServiceRegistrar registrar,
+        ILogger<WindowsSttServiceApplier> logger)
     {
         _options = options.Value;
+        _registrar = registrar;
         _logger = logger;
     }
 
@@ -39,6 +45,8 @@ public class WindowsSttServiceApplier : IWhisperPluginApplier
     {
         var serviceName = _options.NativeSttServiceName;
         _logger.LogInformation("Starting native STT service {Service}.", serviceName);
+
+        await _registrar.EnsureRegisteredAsync(cancellationToken);
 
         await ProcessRunner.RunAsync(
             ServiceControlExecutable,

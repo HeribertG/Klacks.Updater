@@ -37,6 +37,7 @@ if (mode == UpdaterMode.Native)
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
     if (OperatingSystem.IsWindows())
     {
+        builder.Services.AddSingleton<ISttServiceRegistrar, WindowsSttServiceRegistrar>();
         builder.Services.AddSingleton<IWhisperPluginApplier, WindowsSttServiceApplier>();
         builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, JunctionLinkSwitcher>();

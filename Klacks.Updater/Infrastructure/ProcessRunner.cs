@@ -2,7 +2,8 @@
 
 /// <summary>
 /// Minimal async wrapper around an external process. Throws when the process exits non-zero so
-/// callers (applier/backup) surface failures to the executor, which then rolls back.
+/// callers (applier/backup) surface failures to the executor, which then rolls back. The failure message carries stderr,
+/// or stdout when stderr is blank (sc.exe reports its errors on stdout), trimmed and truncated.
 /// </summary>
 using System.Diagnostics;
 
@@ -10,6 +11,10 @@ namespace Klacks.Updater.Infrastructure;
 
 public static class ProcessRunner
 {
+    private const int MaxFailureOutputLength = 2000;
+
+    private const string TruncationSuffix = "...";
+
     public static async Task<string> RunAsync(
         string fileName,
         string arguments,
@@ -52,7 +57,7 @@ public static class ProcessRunner
 
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException($"'{fileName} {arguments}' exited {process.ExitCode}: {stderr}");
+            throw new InvalidOperationException(BuildFailureMessage(fileName, arguments, process.ExitCode, stdout, stderr));
         }
 
         return stdout;
@@ -94,7 +99,19 @@ public static class ProcessRunner
 
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException($"'{fileName} {arguments}' exited {process.ExitCode}: {stderr}");
+            throw new InvalidOperationException(BuildFailureMessage(fileName, arguments, process.ExitCode, string.Empty, stderr));
         }
+    }
+
+    public static string BuildFailureMessage(string fileName, string arguments, int exitCode, string stdout, string stderr)
+    {
+        var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+        var trimmed = detail.Trim();
+        if (trimmed.Length > MaxFailureOutputLength)
+        {
+            trimmed = trimmed[..MaxFailureOutputLength] + TruncationSuffix;
+        }
+
+        return $"'{fileName} {arguments}' exited {exitCode}: {trimmed}";
     }
 }

@@ -18,11 +18,13 @@ public static class SttEngineProfiles
             WhisperPluginConstants.ModelAliasSmall => Whisper(
                 alias,
                 options,
+                WhisperPluginConstants.SmallModelId,
                 WhisperPluginConstants.SmallModelRequiredMemoryBytes,
                 WhisperPluginConstants.SmallModelRequiredDiskBytes),
             WhisperPluginConstants.ModelAliasLarge => Whisper(
                 alias,
                 options,
+                WhisperPluginConstants.LargeModelId,
                 WhisperPluginConstants.LargeModelRequiredMemoryBytes,
                 WhisperPluginConstants.LargeModelRequiredDiskBytes),
             WhisperPluginConstants.ModelAliasParakeet => Parakeet(options),
@@ -30,6 +32,10 @@ public static class SttEngineProfiles
         };
     }
 
+    /// <summary>
+    /// One profile per engine (service). The Whisper entry carries the large-model alias, model id and requirements as a
+    /// placeholder; only the service, compose profile and URL are meaningful for stopping engines.
+    /// </summary>
     public static IReadOnlyList<SttEngineProfile> All(UpdaterOptions options)
     {
         return
@@ -37,13 +43,14 @@ public static class SttEngineProfiles
             Whisper(
                 WhisperPluginConstants.ModelAliasLarge,
                 options,
+                WhisperPluginConstants.LargeModelId,
                 WhisperPluginConstants.LargeModelRequiredMemoryBytes,
                 WhisperPluginConstants.LargeModelRequiredDiskBytes),
             Parakeet(options),
         ];
     }
 
-    private static SttEngineProfile Whisper(string alias, UpdaterOptions options, long requiredMemoryBytes, long requiredDiskBytes)
+    private static SttEngineProfile Whisper(string alias, UpdaterOptions options, string modelId, long requiredMemoryBytes, long requiredDiskBytes)
     {
         return new SttEngineProfile(
             alias,
@@ -52,6 +59,7 @@ public static class SttEngineProfiles
             options.WhisperComposeProfile,
             options.WhisperBaseUrl,
             WhisperPluginConstants.ProviderName,
+            modelId,
             requiredMemoryBytes,
             requiredDiskBytes);
     }
@@ -65,6 +73,7 @@ public static class SttEngineProfiles
             options.SttComposeProfile,
             options.SttBaseUrl,
             WhisperPluginConstants.ParakeetProviderName,
+            WhisperPluginConstants.ParakeetModelId,
             WhisperPluginConstants.ParakeetRequiredMemoryBytes,
             WhisperPluginConstants.ParakeetRequiredDiskBytes);
     }

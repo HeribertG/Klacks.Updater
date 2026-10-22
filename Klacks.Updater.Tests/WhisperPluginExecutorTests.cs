@@ -117,6 +117,7 @@ public class WhisperPluginExecutorTests
     [Test]
     public async Task Install_fails_when_model_install_throws_and_keeps_container_running()
     {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
         _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("download failed"));
 
@@ -164,9 +165,125 @@ public class WhisperPluginExecutorTests
         var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
 
         result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
-        calls.ShouldBe([$"stop:{_options.WhisperServiceName}", $"start:{_options.SttServiceName}"]);
+        calls.ShouldBe([$"start:{_options.SttServiceName}", $"stop:{_options.WhisperServiceName}"]);
         await _installer.Received(1).WaitForReadyAsync(_options.SttBaseUrl, Arg.Any<CancellationToken>());
         await _installer.Received(1).InstallModelAsync(_options.SttBaseUrl, ParakeetModelId, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_TargetStartFails_OtherEngineIsNotStopped()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _applier.StartAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("service missing"));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.DidNotReceive().StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+        await _providerStore.DidNotReceive().UpsertEnabledAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_ModelInstallFailsOnEngineChange_StopsNewcomerAndLeavesOtherRunning()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("download failed"));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.Received(1).StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), CancellationToken.None);
+        await _applier.DidNotReceive().StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_NotReadyOnEngineChange_StopsNewcomerAndLeavesOtherRunning()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.WaitForReadyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.Received(1).StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), CancellationToken.None);
+        await _applier.DidNotReceive().StopAsync(
+            Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_RollbackStopFailure_StillReportsOriginalFailure()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("download failed"));
+        _applier.StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("stop failed"));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        result.Message.ShouldContain("download failed");
+    }
+
+    [Test]
+    public async Task Install_SameEngineModelSwitchFails_StopsNothing()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("download failed"));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasLarge, LargeModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_SameEngineNotReady_StopsNothing()
+    {
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.WaitForReadyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasSmall, SmallModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_StopsOtherEnginesOnlyAfterUpsert()
+    {
+        await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        Received.InOrder(() =>
+        {
+            _applier.StartAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+            _installer.WaitForReadyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _providerStore.UpsertEnabledAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _applier.StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+        });
+    }
+
+    [TestCase(WhisperPluginConstants.ModelAliasSmall, LargeModelId)]
+    [TestCase(WhisperPluginConstants.ModelAliasLarge, SmallModelId)]
+    [TestCase(WhisperPluginConstants.ModelAliasParakeet, LargeModelId)]
+    [TestCase(WhisperPluginConstants.ModelAliasLarge, "attacker/other-model")]
+    public async Task Install_ModelReferenceNotMatchingAlias_FailsWithoutStarting(string alias, string modelId)
+    {
+        var result = await _executor.ExecuteAsync(InstallOp(alias, modelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        result.Message.ShouldContain(modelId);
+        await _applier.DidNotReceive().StartAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+        await _installer.DidNotReceive().InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -199,7 +316,7 @@ public class WhisperPluginExecutorTests
         var result = await _executor.ExecuteAsync(InstallOp());
 
         result.Status.ShouldBe(UpdateExecutionStatus.Failed);
-        result.Message.ShouldBe($"The self-hosted {WhisperPluginConstants.ProviderName} is not available on this installation.");
+        result.Message.ShouldBe($"{WhisperPluginConstants.ProviderName} is not available on this installation.");
         await _resourceCheck.DidNotReceive().CheckAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
         await _applier.DidNotReceive().StartAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
         await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());

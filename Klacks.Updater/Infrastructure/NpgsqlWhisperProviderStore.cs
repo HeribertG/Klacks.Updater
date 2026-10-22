@@ -56,6 +56,16 @@ public class NpgsqlWhisperProviderStore : IWhisperProviderStore
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<string?> GetEnabledApiUrlAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT api_url FROM custom_stt_providers WHERE id = @id AND is_enabled AND NOT is_deleted;", connection);
+        command.Parameters.AddWithValue("id", WhisperPluginConstants.ProviderId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is string url ? url : null;
+    }
+
     private async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)
     {
         var connection = new NpgsqlConnection(_options.ConnectionString);

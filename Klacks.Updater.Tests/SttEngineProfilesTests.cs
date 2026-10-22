@@ -31,6 +31,7 @@ public class SttEngineProfilesTests
         profile.ComposeProfile.ShouldBe("whisper-p");
         profile.BaseUrl.ShouldBe("http://whisper-x:8000");
         profile.ProviderName.ShouldBe(WhisperPluginConstants.ProviderName);
+        profile.ModelId.ShouldBe(WhisperPluginConstants.SmallModelId);
         profile.RequiredMemoryBytes.ShouldBe(WhisperPluginConstants.SmallModelRequiredMemoryBytes);
         profile.RequiredDiskBytes.ShouldBe(WhisperPluginConstants.SmallModelRequiredDiskBytes);
     }
@@ -43,6 +44,7 @@ public class SttEngineProfilesTests
         profile.ShouldNotBeNull();
         profile.IsParakeet.ShouldBeFalse();
         profile.ServiceName.ShouldBe("whisper-x");
+        profile.ModelId.ShouldBe(WhisperPluginConstants.LargeModelId);
         profile.RequiredMemoryBytes.ShouldBe(WhisperPluginConstants.LargeModelRequiredMemoryBytes);
         profile.RequiredDiskBytes.ShouldBe(WhisperPluginConstants.LargeModelRequiredDiskBytes);
     }
@@ -59,6 +61,7 @@ public class SttEngineProfilesTests
         profile.ComposeProfile.ShouldBe("stt-p");
         profile.BaseUrl.ShouldBe("http://stt-x:8000");
         profile.ProviderName.ShouldBe(WhisperPluginConstants.ParakeetProviderName);
+        profile.ModelId.ShouldBe(WhisperPluginConstants.ParakeetModelId);
         profile.RequiredMemoryBytes.ShouldBe(WhisperPluginConstants.ParakeetRequiredMemoryBytes);
         profile.RequiredDiskBytes.ShouldBe(WhisperPluginConstants.ParakeetRequiredDiskBytes);
     }

@@ -4,11 +4,14 @@ namespace Klacks.Updater.Domain;
 
 /// <summary>
 /// Maintains the well-known self-hosted STT row in the custom_stt_providers table so the API lists the
-/// provider (and its model) exactly when the engine is actually installed.
+/// provider (and its model) exactly when the engine is actually installed. GetEnabledApiUrlAsync returns the API URL of
+/// the currently enabled row (null when none), which tells a model switch of the running engine from an engine change.
 /// </summary>
 public interface IWhisperProviderStore
 {
     Task UpsertEnabledAsync(string modelId, string providerName, string apiUrl, CancellationToken cancellationToken = default);
 
     Task DisableAsync(CancellationToken cancellationToken = default);
+
+    Task<string?> GetEnabledApiUrlAsync(CancellationToken cancellationToken = default);
 }

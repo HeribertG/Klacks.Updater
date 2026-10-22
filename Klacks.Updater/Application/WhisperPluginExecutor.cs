@@ -2,10 +2,12 @@
 
 /// <summary>
 /// State machine for the self-hosted STT engine operations (Whisper and Parakeet). Install: resolve the engine profile
-/// from the model alias → capacity gate → stop the other engines → start the engine → wait for its
-/// Speaches-compatible API → install the model → enable the provider row. Uninstall: disable the provider row → stop
-/// every supported engine. Exactly one engine runs at a time. On install failure the engine is deliberately left
-/// running (a model switch must not kill a working install). Never throws; always returns a terminal status.
+/// from the model alias → verify the model reference → capacity gate → start the engine → wait for its
+/// Speaches-compatible API → install the model → enable the provider row → only then stop the other engines (a failed
+/// switch must never leave the system without a working engine). A failure after the start of an engine that was not
+/// yet the enabled one stops that newcomer again; a model switch of the running engine leaves it running. Uninstall:
+/// disable the provider row → stop every supported engine. Exactly one engine runs at a time. Never throws; always
+/// returns a terminal status.
 /// </summary>
 /// <param name="applier">Starts, stops and capability-checks the engines on this installation</param>
 /// <param name="installer">Polls the engine API and installs the model</param>
@@ -55,14 +57,27 @@ public class WhisperPluginExecutor
     {
         if (string.IsNullOrWhiteSpace(operation.ArtifactRef))
         {
-            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, "Whisper install operation has no model reference.");
+            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, "Speech engine install operation has no model reference.");
         }
 
         var profile = SttEngineProfiles.Resolve(operation.TargetVersion, _options);
         if (profile is null)
         {
-            _logger.LogWarning("Whisper install {Id} rejected: unknown model alias {Alias}.", operation.Id, operation.TargetVersion);
+            _logger.LogWarning("STT install {Id} rejected: unknown model alias {Alias}.", operation.Id, operation.TargetVersion);
             return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"Unknown model alias '{operation.TargetVersion}'.");
+        }
+
+        if (!string.Equals(operation.ArtifactRef, profile.ModelId, StringComparison.Ordinal))
+        {
+            _logger.LogWarning(
+                "STT install {Id} rejected: model reference {ModelRef} does not match alias {Alias}.",
+                operation.Id,
+                operation.ArtifactRef,
+                operation.TargetVersion);
+            return new UpdateExecutionResult(
+                UpdateExecutionStatus.Failed,
+                null,
+                $"Model reference '{operation.ArtifactRef}' does not match model alias '{operation.TargetVersion}'.");
         }
 
         if (!_applier.Supports(profile))
@@ -70,30 +85,36 @@ public class WhisperPluginExecutor
             return new UpdateExecutionResult(
                 UpdateExecutionStatus.Failed,
                 null,
-                $"The self-hosted {profile.ProviderName} is not available on this installation.");
+                $"{profile.ProviderName} is not available on this installation.");
         }
 
+        var newcomerStartAttempted = false;
         try
         {
             var capacityError = await _resourceCheck.CheckAsync(profile.RequiredMemoryBytes, profile.RequiredDiskBytes, cancellationToken);
             if (capacityError is not null)
             {
-                _logger.LogWarning("Whisper install {Id} rejected: {Reason}", operation.Id, capacityError);
+                _logger.LogWarning("STT install {Id} rejected: {Reason}", operation.Id, capacityError);
                 return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, capacityError);
             }
 
-            await StopOtherEnginesAsync(profile, cancellationToken);
+            var previousApiUrl = await _providerStore.GetEnabledApiUrlAsync(cancellationToken);
+            var isNewcomer = !string.Equals(previousApiUrl, profile.BaseUrl, StringComparison.Ordinal);
+
+            newcomerStartAttempted = isNewcomer;
             await _applier.StartAsync(profile, cancellationToken);
 
             if (!await _installer.WaitForReadyAsync(profile.BaseUrl, cancellationToken))
             {
+                await StopNewcomerAsync(profile, newcomerStartAttempted);
                 return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"{profile.ProviderName} service did not become ready.");
             }
 
             await _installer.InstallModelAsync(profile.BaseUrl, operation.ArtifactRef, cancellationToken);
             await _providerStore.UpsertEnabledAsync(operation.ArtifactRef, profile.ProviderName, profile.BaseUrl, cancellationToken);
+            await StopOtherEnginesAsync(profile, cancellationToken);
 
-            return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, $"Whisper installed (model {operation.TargetVersion}).");
+            return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, $"{profile.ProviderName} installed (model {operation.TargetVersion}).");
         }
         catch (OperationCanceledException)
         {
@@ -101,8 +122,9 @@ public class WhisperPluginExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Whisper install {Id} failed.", operation.Id);
-            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"Whisper install failed: {ex.Message}");
+            _logger.LogError(ex, "STT install {Id} failed.", operation.Id);
+            await StopNewcomerAsync(profile, newcomerStartAttempted);
+            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"{profile.ProviderName} install failed: {ex.Message}");
         }
     }
 
@@ -133,7 +155,7 @@ public class WhisperPluginExecutor
                 throw stopErrors[0];
             }
 
-            return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, "Whisper uninstalled.");
+            return new UpdateExecutionResult(UpdateExecutionStatus.Succeeded, null, "Speech engine uninstalled.");
         }
         catch (OperationCanceledException)
         {
@@ -141,8 +163,8 @@ public class WhisperPluginExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Whisper uninstall {Id} failed.", operation.Id);
-            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"Whisper uninstall failed: {ex.Message}");
+            _logger.LogError(ex, "STT uninstall {Id} failed.", operation.Id);
+            return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"Speech engine uninstall failed: {ex.Message}");
         }
     }
 
@@ -159,8 +181,25 @@ public class WhisperPluginExecutor
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Stopping STT service {Service} before installing {Target} failed.", other.ServiceName, target.ServiceName);
+                _logger.LogWarning(ex, "Could not stop STT service {Service} after installing {Target}.", other.ServiceName, target.ServiceName);
             }
+        }
+    }
+
+    private async Task StopNewcomerAsync(SttEngineProfile profile, bool newcomerStartAttempted)
+    {
+        if (!newcomerStartAttempted)
+        {
+            return;
+        }
+
+        try
+        {
+            await _applier.StopAsync(profile, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not stop STT service {Service} while rolling back a failed install.", profile.ServiceName);
         }
     }
 }

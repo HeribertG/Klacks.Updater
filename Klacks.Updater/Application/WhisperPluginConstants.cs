@@ -3,7 +3,7 @@
 /// <summary>
 /// Contract constants for the Whisper plugin shared with Klacks.Api via the database: the well-known
 /// provider row id/name (deploy/whisper-stt-provider.sql), the model alias the API writes into
-/// target_version, and the capacity requirements per model.
+/// target_version, the model ids the API writes into artifact_ref, and the capacity requirements per model.
 /// </summary>
 namespace Klacks.Updater.Application;
 
@@ -18,6 +18,12 @@ public static class WhisperPluginConstants
     public const string ConnectionTypeRest = "rest";
 
     public const string ParakeetProviderName = "Parakeet (self-hosted)";
+
+    public const string SmallModelId = "Systran/faster-whisper-small";
+
+    public const string LargeModelId = "deepdml/faster-whisper-large-v3-turbo-ct2";
+
+    public const string ParakeetModelId = "parakeet-tdt-0.6b-v3-int8";
 
     public const string ModelAliasSmall = "small";
 

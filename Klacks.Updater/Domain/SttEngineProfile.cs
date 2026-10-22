@@ -4,8 +4,8 @@ namespace Klacks.Updater.Domain;
 
 /// <summary>
 /// One self-hosted speech-recognition engine the updater can install: the model alias that selects it, the compose
-/// service/profile (or native service) that runs it, the base URL of its Speaches-compatible API, the provider row name
-/// and the capacity it needs.
+/// service/profile (or native service) that runs it, the base URL of its Speaches-compatible API, the provider row name,
+/// the model id the install operation must reference, and the capacity it needs.
 /// </summary>
 public sealed record SttEngineProfile(
     string Alias,
@@ -14,5 +14,6 @@ public sealed record SttEngineProfile(
     string ComposeProfile,
     string BaseUrl,
     string ProviderName,
+    string ModelId,
     long RequiredMemoryBytes,
     long RequiredDiskBytes);

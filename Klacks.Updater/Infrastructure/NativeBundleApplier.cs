@@ -4,7 +4,9 @@
 /// Native applier: downloads the release bundle, refuses it unless its SHA-256 matches the signed hash on the update
 /// row, unpacks it into versions/&lt;target&gt; via a staging directory, then stops the service, points "current" at the
 /// new version and starts it again (the API migrates on start). The speech recognition side service is paused around
-/// the switch (best effort, never fails the update) so it does not run binaries of a replaced version directory. A rollback only switches "current" back to a version
+/// the switch (best effort, never fails the update) so it does not run binaries of a replaced version directory. Right
+/// after every switch the version "current" now points at is recorded in the setup's uninstall entry (best effort), so
+/// a health-gate rollback rewrites the previous version again. A rollback only switches "current" back to a version
 /// that is still on disk; old versions beyond the retention count are removed after a successful switch, never the
 /// current or the previous one.
 /// </summary>
@@ -13,6 +15,7 @@
 /// <param name="serviceController">Stops and starts the Klacks service</param>
 /// <param name="sttServiceLifecycle">Pauses and resumes the speech recognition service around the switch</param>
 /// <param name="linkSwitcher">Points "current" at a version directory</param>
+/// <param name="installedVersionRecorder">Records the version "current" points at in the operating system's installation entry</param>
 /// <param name="logger">Logger for diagnostic output</param>
 
 using System.IO.Compression;
@@ -38,6 +41,7 @@ public class NativeBundleApplier : IUpdateApplier
     private readonly IServiceController _serviceController;
     private readonly ISttServiceLifecycle _sttServiceLifecycle;
     private readonly IVersionLinkSwitcher _linkSwitcher;
+    private readonly IInstalledVersionRecorder _installedVersionRecorder;
     private readonly ILogger<NativeBundleApplier> _logger;
     private readonly string? _updaterVersionDirectory;
 
@@ -47,6 +51,7 @@ public class NativeBundleApplier : IUpdateApplier
         IServiceController serviceController,
         ISttServiceLifecycle sttServiceLifecycle,
         IVersionLinkSwitcher linkSwitcher,
+        IInstalledVersionRecorder installedVersionRecorder,
         ILogger<NativeBundleApplier> logger)
     {
         _options = options.Value;
@@ -55,6 +60,7 @@ public class NativeBundleApplier : IUpdateApplier
         _serviceController = serviceController;
         _sttServiceLifecycle = sttServiceLifecycle;
         _linkSwitcher = linkSwitcher;
+        _installedVersionRecorder = installedVersionRecorder;
         _logger = logger;
         // The updater runs from current\updater; its files stay locked in the version directory it was started from,
         // even after the link moves on, so that directory is never pruned while this process lives.
@@ -74,7 +80,7 @@ public class NativeBundleApplier : IUpdateApplier
             await InstallBundleAsync(operation.ArtifactRef, operation.ArtifactSha256, versionDirectory, cancellationToken);
         }
 
-        await SwitchToAsync(versionDirectory, cancellationToken);
+        await SwitchToAsync(operation.TargetVersion, versionDirectory, cancellationToken);
         RemoveOldVersions(versionDirectory, operation.RollbackTargetVersion);
     }
 
@@ -86,7 +92,7 @@ public class NativeBundleApplier : IUpdateApplier
             throw new DirectoryNotFoundException($"Version {version} is no longer installed; cannot switch back to it.");
         }
 
-        return SwitchToAsync(versionDirectory, cancellationToken);
+        return SwitchToAsync(version, versionDirectory, cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken = default)
@@ -140,14 +146,27 @@ public class NativeBundleApplier : IUpdateApplier
         return Convert.ToHexStringLower(hash);
     }
 
-    private async Task SwitchToAsync(string versionDirectory, CancellationToken cancellationToken)
+    private async Task SwitchToAsync(string version, string versionDirectory, CancellationToken cancellationToken)
     {
         await _serviceController.StopAsync(cancellationToken);
         await TryPauseSttAsync(cancellationToken);
         await _linkSwitcher.SwitchAsync(_layout.CurrentLink, versionDirectory, cancellationToken);
         _logger.LogInformation("Switched {Link} to {Directory}.", _layout.CurrentLink, versionDirectory);
+        TryRecordInstalledVersion(version);
         await TryResumeSttAsync(cancellationToken);
         await _serviceController.StartAsync(cancellationToken);
+    }
+
+    private void TryRecordInstalledVersion(string version)
+    {
+        try
+        {
+            _installedVersionRecorder.Record(version);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not record installed version {Version} in the setup's uninstall entry.", version);
+        }
     }
 
     private async Task TryPauseSttAsync(CancellationToken cancellationToken)

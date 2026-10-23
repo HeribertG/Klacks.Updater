@@ -35,9 +35,11 @@ public partial class NativeInstallLayout
 
     public string StagingDirectory => Path.Combine(ProgramRoot, StagingDirectoryName);
 
+    public static bool IsVersionName(string name) => VersionPattern().IsMatch(name);
+
     public string VersionDirectory(string version)
     {
-        if (!VersionPattern().IsMatch(version))
+        if (!IsVersionName(version))
         {
             throw new InvalidOperationException($"'{version}' is not a valid version name.");
         }

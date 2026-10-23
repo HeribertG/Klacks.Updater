@@ -35,6 +35,7 @@ if (mode == UpdaterMode.Native)
     });
     builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
+    builder.Services.AddSingleton<IInstalledVersionReconciler, NativeInstalledVersionReconciler>();
     builder.Services.PostConfigure<UpdaterOptions>(options =>
         options.SttBaseUrl = SttServiceRegistration.ResolveNativeBaseUrl(options.SttBaseUrl));
     if (OperatingSystem.IsWindows())
@@ -44,6 +45,7 @@ if (mode == UpdaterMode.Native)
         builder.Services.AddSingleton<IWhisperPluginApplier, WindowsSttServiceApplier>();
         builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, JunctionLinkSwitcher>();
+        builder.Services.AddSingleton<IInstalledVersionRecorder, WindowsUninstallEntryVersionRecorder>();
     }
     else
     {
@@ -51,6 +53,7 @@ if (mode == UpdaterMode.Native)
         builder.Services.AddSingleton<IWhisperPluginApplier, UnsupportedWhisperPluginApplier>();
         builder.Services.AddSingleton<IServiceController, LaunchdServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, SymbolicLinkSwitcher>();
+        builder.Services.AddSingleton<IInstalledVersionRecorder, NoOpInstalledVersionRecorder>();
     }
 }
 else
@@ -60,6 +63,7 @@ else
     builder.Services.AddSingleton<IUpdateApplier, DockerApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, PgDumpBackupService>();
     builder.Services.AddSingleton<IWhisperPluginApplier, DockerWhisperApplier>();
+    builder.Services.AddSingleton<IInstalledVersionReconciler, NoOpInstalledVersionReconciler>();
 }
 
 builder.Services.AddSingleton<IUpdateHealthGate, HttpHealthGate>();

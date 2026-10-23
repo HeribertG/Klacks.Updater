@@ -23,6 +23,7 @@ public class NativeBundleApplierTests
     private IServiceController _service = null!;
     private ISttServiceLifecycle _stt = null!;
     private IVersionLinkSwitcher _links = null!;
+    private IInstalledVersionRecorder _recorder = null!;
     private List<string> _calls = null!;
 
     [SetUp]
@@ -41,6 +42,8 @@ public class NativeBundleApplierTests
         _links = Substitute.For<IVersionLinkSwitcher>();
         _links.SwitchAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call => Record("switch:" + Path.GetFileName(call.ArgAt<string>(1))));
+        _recorder = Substitute.For<IInstalledVersionRecorder>();
+        _recorder.When(recorder => recorder.Record(Arg.Any<string>())).Do(call => _calls.Add("record:" + call.Arg<string>()));
     }
 
     [TearDown]
@@ -72,7 +75,7 @@ public class NativeBundleApplierTests
         var options = Options.Create(new UpdaterOptions { NativeProgramRoot = _root, NativeRetainedVersions = retainedVersions });
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(NativeBundleApplier.HttpClientName).Returns(_ => new HttpClient(new StaticBundleHandler(_bundle)));
-        return new NativeBundleApplier(options, factory, _service, _stt, _links, NullLogger<NativeBundleApplier>.Instance);
+        return new NativeBundleApplier(options, factory, _service, _stt, _links, _recorder, NullLogger<NativeBundleApplier>.Instance);
     }
 
     private async Task<string> BundleSha256Async()
@@ -100,7 +103,7 @@ public class NativeBundleApplierTests
         await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
 
         File.Exists(Path.Combine(_root, "versions", "1.2.0", "app", "Klacks.Api.dll")).ShouldBeTrue();
-        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "stt-start", "start"]);
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "record:1.2.0", "stt-start", "start"]);
         Directory.EnumerateFileSystemEntries(Path.Combine(_root, "staging")).ShouldBeEmpty();
     }
 
@@ -111,7 +114,7 @@ public class NativeBundleApplierTests
 
         await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
 
-        _calls.ShouldBe(["stop", "switch:1.2.0", "stt-start", "start"]);
+        _calls.ShouldBe(["stop", "switch:1.2.0", "record:1.2.0", "stt-start", "start"]);
     }
 
     [Test]
@@ -122,7 +125,7 @@ public class NativeBundleApplierTests
 
         await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
 
-        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "start"]);
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "record:1.2.0", "start"]);
     }
 
     [Test]
@@ -153,7 +156,40 @@ public class NativeBundleApplierTests
 
         await CreateApplier().ActivateVersionAsync("1.1.0");
 
-        _calls.ShouldBe(["stop", "stt-stop", "switch:1.1.0", "stt-start", "start"]);
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.1.0", "record:1.1.0", "stt-start", "start"]);
+    }
+
+    [Test]
+    public async Task Activate_does_not_fail_the_update_when_the_installed_version_cannot_be_recorded()
+    {
+        _recorder.When(recorder => recorder.Record(Arg.Any<string>()))
+            .Do(_ => throw new UnauthorizedAccessException("registry denied"));
+
+        await CreateApplier().ActivateAsync(Operation(await BundleSha256Async()));
+
+        _calls.ShouldBe(["stop", "stt-stop", "switch:1.2.0", "record:1.2.0", "stt-start", "start"]);
+        File.Exists(Path.Combine(_root, "versions", "1.2.0", "app", "Klacks.Api.dll")).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Activate_records_nothing_when_the_link_switch_fails()
+    {
+        _links.SwitchAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new IOException("junction locked")));
+        var sha256 = await BundleSha256Async();
+
+        await Should.ThrowAsync<IOException>(() => CreateApplier().ActivateAsync(Operation(sha256)));
+
+        _recorder.DidNotReceive().Record(Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Activate_with_hash_mismatch_records_no_version()
+    {
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => CreateApplier().ActivateAsync(Operation(new string('0', 64))));
+
+        _recorder.DidNotReceive().Record(Arg.Any<string>());
     }
 
     [Test]

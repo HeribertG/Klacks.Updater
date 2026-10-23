@@ -7,6 +7,7 @@
 /// </summary>
 /// <param name="store">Hand-off queue access</param>
 /// <param name="executor">The update/rollback state machine</param>
+/// <param name="installedVersionReconciler">Aligns the operating system's installation entry with the running version on startup</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
@@ -19,6 +20,7 @@ public class Worker : BackgroundService
     private readonly UpdateExecutor _executor;
     private readonly WhisperPluginExecutor _whisperExecutor;
     private readonly IBackupRetentionService _retention;
+    private readonly IInstalledVersionReconciler _installedVersionReconciler;
     private readonly ILogger<Worker> _logger;
 
     public Worker(
@@ -26,18 +28,21 @@ public class Worker : BackgroundService
         UpdateExecutor executor,
         WhisperPluginExecutor whisperExecutor,
         IBackupRetentionService retention,
+        IInstalledVersionReconciler installedVersionReconciler,
         ILogger<Worker> logger)
     {
         _store = store;
         _executor = executor;
         _whisperExecutor = whisperExecutor;
         _retention = retention;
+        _installedVersionReconciler = installedVersionReconciler;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Klacks updater started.");
+        ReconcileInstalledVersion();
 
         try
         {
@@ -71,6 +76,18 @@ public class Worker : BackgroundService
             }
 
             await RunOperationAsync(operation, stoppingToken);
+        }
+    }
+
+    private void ReconcileInstalledVersion()
+    {
+        try
+        {
+            _installedVersionReconciler.Reconcile();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to reconcile the installed version on startup.");
         }
     }
 

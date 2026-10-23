@@ -6,6 +6,12 @@
 #
 # After the first push, set the ghcr package `klacks-updater` visibility to public
 # (or ship customers a read-only PAT) so `docker compose pull` works on-prem.
+#
+# Tag policy (owner decision 2026-10-23: customers only receive released updater code):
+#   push to main           -> :edge and :sha-<commit>   (never :latest)
+#   stable tag vX.Y.Z      -> :X.Y.Z and :latest        (tagged by scripts/release.ps1 together with Api/Ui)
+#   prerelease vX.Y.Z-rc1  -> :X.Y.Z-rc1 only
+# :latest is what on-prem installs and production resolve, so it moves only with a stable Klacks release.
 name: Build & Push Klacks.Updater
 
 on:
@@ -30,13 +36,15 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
           else
-            VERSION="latest"
+            VERSION="edge"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           {
             echo "tags<<EOF"
-            if [ "$VERSION" = "latest" ]; then
-              echo "ghcr.io/heribertg/klacks-updater:latest"
+            if [ "$VERSION" = "edge" ]; then
+              # Unreleased main builds never move :latest - that would ship unreleased code to customers.
+              echo "ghcr.io/heribertg/klacks-updater:edge"
+              echo "ghcr.io/heribertg/klacks-updater:sha-${GITHUB_SHA}"
             else
               echo "ghcr.io/heribertg/klacks-updater:$VERSION"
               # Move floating tags only for stable releases (no prerelease hyphen).

@@ -29,6 +29,7 @@ var mode = builder.Configuration.GetSection(UpdaterOptions.SectionName).GetValue
 if (mode == UpdaterMode.Native)
 {
     builder.Services.AddWindowsService(options => options.ServiceName = UpdaterConstants.NativeUpdaterServiceName);
+    FailSafeEventLog.Register(builder.Services);
     builder.Services.AddHttpClient(NativeBundleApplier.HttpClientName, client =>
     {
         client.Timeout = UpdaterConstants.BundleDownloadTimeout;

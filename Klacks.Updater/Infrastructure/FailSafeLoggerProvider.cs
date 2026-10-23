@@ -4,15 +4,19 @@
 /// Decorates a logger provider so that a failing log sink can never change the program flow: write errors of the
 /// inner loggers are swallowed instead of surfacing as an AggregateException at the call site. The first failure is
 /// reported once to the given error output; later failures stay silent. Used for the Windows event log, whose writes
-/// can fail with "Access is denied" while a freshly created event source is not yet usable.
+/// can fail with "Access is denied" while a freshly created event source is not yet usable. It carries the provider alias
+/// "EventLog" so that the Logging:EventLog configuration section keeps applying to the wrapped event log.
 /// </summary>
 /// <param name="inner">Logger provider whose loggers do the actual writing</param>
 /// <param name="errorOutput">Receives the one-time notice about the first swallowed write failure</param>
 
 namespace Klacks.Updater.Infrastructure;
 
+[ProviderAlias(FailSafeLoggerProvider.EventLogAlias)]
 public sealed class FailSafeLoggerProvider : ILoggerProvider, ISupportExternalScope
 {
+    public const string EventLogAlias = "EventLog";
+
     private const string WriteFailureNotice =
         "A log write through {0} failed and was ignored; further failures of this logger are not reported. {1}";
 

@@ -1,11 +1,14 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
 /// <summary>
-/// Replaces the bare Windows event log provider that AddWindowsService registers with the same provider wrapped in
-/// FailSafeLoggerProvider, so that a failing event log write (for example "Cannot open log for source", Win32 error 5)
-/// never reaches the code that logged. The Warning-and-above default filter of the event log is re-registered for the
-/// wrapper type, because the host default is keyed to EventLogLoggerProvider and would no longer match. Without a
-/// registered event log provider (not running as a Windows service) nothing changes.
+/// Replaces the bare Windows event log provider with the same provider wrapped in FailSafeLoggerProvider, so that a
+/// failing event log write (for example "Cannot open log for source", Win32 error 5) never reaches the code that logged.
+/// The provider is registered primarily by the host default (Host.CreateApplicationBuilder adds it on Windows);
+/// AddWindowsService only configures the event log settings and adds the same provider idempotently. Register must
+/// therefore run after every AddEventLog/AddWindowsService call - the ordering is load-bearing, a provider registered
+/// later would stay bare. The Warning-and-above default filter is re-registered for the wrapper type, because the host
+/// default is keyed to EventLogLoggerProvider and would no longer match. Without a registered event log provider
+/// nothing changes.
 /// </summary>
 
 using System.Runtime.Versioning;

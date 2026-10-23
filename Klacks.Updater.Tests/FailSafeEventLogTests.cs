@@ -2,9 +2,13 @@
 
 namespace Klacks.Updater.Tests;
 
+using System.Runtime.Versioning;
 using Klacks.Updater.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.EventLog;
 using NSubstitute;
 using NUnit.Framework;
 using Shouldly;
@@ -94,6 +98,58 @@ public class FailSafeEventLogTests
         FailSafeEventLog.Register(services);
 
         services.Count.ShouldBe(countBefore);
+    }
+
+    [Test]
+    public void Wrap_ReplacesDescriptorRegisteredLikeTheHostDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider, InnerProvider>());
+
+        FailSafeEventLog.Wrap(services, typeof(InnerProvider), _ => _innerProvider, _errorOutput);
+
+        services.Count(descriptor => descriptor.ImplementationType == typeof(InnerProvider)).ShouldBe(0);
+        using var serviceProvider = services.BuildServiceProvider();
+        serviceProvider.GetServices<ILoggerProvider>().OfType<FailSafeLoggerProvider>().Count().ShouldBe(1);
+    }
+
+    [Test]
+    [SupportedOSPlatform("windows")]
+    public void Wrap_ReplacesTheDescriptorOfTheRealAddEventLog()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddEventLog());
+        services.Count(descriptor => descriptor.ImplementationType == typeof(EventLogLoggerProvider)).ShouldBe(1);
+
+        FailSafeEventLog.Wrap(services, typeof(EventLogLoggerProvider), _ => _innerProvider, _errorOutput);
+
+        services.Count(descriptor => descriptor.ImplementationType == typeof(EventLogLoggerProvider)).ShouldBe(0);
+        services.Count(IsLoggerProviderFactory).ShouldBe(1);
+    }
+
+    [Test]
+    [Platform("Win")]
+    [SupportedOSPlatform("windows")]
+    public void Register_OnTheHostBuilderOfAWindowsHost_ReplacesTheBareEventLogProvider()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddWindowsService(options => options.ServiceName = "Klacks.Updater");
+        builder.Services.Count(descriptor => descriptor.ImplementationType == typeof(EventLogLoggerProvider)).ShouldBe(1);
+
+        FailSafeEventLog.Register(builder.Services);
+
+        builder.Services.Count(descriptor => descriptor.ImplementationType == typeof(EventLogLoggerProvider)).ShouldBe(0);
+        var factoryDescriptors = builder.Services.Where(IsLoggerProviderFactory).ToList();
+        factoryDescriptors.Count.ShouldBe(1);
+        using var serviceProvider = builder.Services.BuildServiceProvider();
+        using var provider = (IDisposable)factoryDescriptors[0].ImplementationFactory!(serviceProvider);
+        provider.ShouldBeOfType<FailSafeLoggerProvider>();
+    }
+
+    private static bool IsLoggerProviderFactory(ServiceDescriptor descriptor)
+    {
+        return descriptor.ServiceType == typeof(ILoggerProvider) && descriptor.ImplementationFactory != null;
     }
 
     private ServiceProvider BuildWrappedServiceProvider()

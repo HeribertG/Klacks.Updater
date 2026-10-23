@@ -115,11 +115,12 @@ public class FailSafeEventLogTests
     }
 
     [Test]
-    [SupportedOSPlatform("windows")]
     public void Wrap_ReplacesTheDescriptorOfTheRealAddEventLog()
     {
         var services = new ServiceCollection();
+#pragma warning disable CA1416
         services.AddLogging(builder => builder.AddEventLog());
+#pragma warning restore CA1416
         services.Count(descriptor => descriptor.ImplementationType == typeof(EventLogLoggerProvider)).ShouldBe(1);
 
         FailSafeEventLog.Wrap(services, typeof(EventLogLoggerProvider), _ => _innerProvider, _errorOutput);

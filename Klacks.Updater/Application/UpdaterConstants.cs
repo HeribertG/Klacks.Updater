@@ -34,4 +34,7 @@ public static class UpdaterConstants
     // Klacks reports "start pending" while it migrates the database and initialises before it accepts requests.
     public static readonly TimeSpan ServiceStartTimeout = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan ServiceStatePollInterval = TimeSpan.FromSeconds(1);
+    public const string DockerEngineUpgradeExchangeDirectory = "/var/lib/postgresql/data/" + EngineUpgradeDirectoryName;
+    public const string EngineUpgradeDirectoryName = "engine-upgrade";
+    public const string NothingChangedSuffix = " Nothing was changed.";
 }

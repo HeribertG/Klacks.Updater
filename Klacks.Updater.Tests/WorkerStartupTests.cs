@@ -3,7 +3,9 @@
 namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
+using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
+using Klacks.Updater.Infrastructure.EngineUpgrade;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -51,6 +53,7 @@ public class WorkerStartupTests
             _store,
             executor,
             whisperExecutor,
+            new EngineUpgradeExecutor(new UnsupportedEngineUpgradeTarget(), NullLogger<EngineUpgradeExecutor>.Instance),
             Substitute.For<IBackupRetentionService>(),
             _reconciler,
             NullLogger<Worker>.Instance);

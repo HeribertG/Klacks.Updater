@@ -1,0 +1,48 @@
+# Unit tests of Klacks.Updater on both platforms it runs on: Linux (Docker image) and Windows (native service).
+# Integration tests that need real PostgreSQL clusters skip themselves when their environment variables are missing.
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  test:
+    name: dotnet test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Show SDK
+        run: dotnet --version
+
+      - name: Test
+        run: dotnet test Klacks.Updater.Tests/Klacks.Updater.Tests.csproj --configuration Release --logger "trx;LogFileName=updater-tests.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: updater-tests-${{ matrix.os }}
+          path: TestResults

@@ -5,6 +5,7 @@ namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
+using Klacks.Updater.Domain.EngineUpgrade;
 using NUnit.Framework;
 using Shouldly;
 
@@ -18,14 +19,42 @@ public class SharedContractFreezeTests
         ((int)UpdateOperationType.Rollback).ShouldBe(1);
         ((int)UpdateOperationType.WhisperInstall).ShouldBe(2);
         ((int)UpdateOperationType.WhisperUninstall).ShouldBe(3);
+        ((int)UpdateOperationType.PostgresUpgrade).ShouldBe(4);
     }
 
     [Test]
     public void OperationTypeMembers_AreFrozen()
     {
         Enum.GetNames<UpdateOperationType>().ShouldBe(
-            ["Update", "Rollback", "WhisperInstall", "WhisperUninstall"],
+            ["Update", "Rollback", "WhisperInstall", "WhisperUninstall", "PostgresUpgrade"],
             ignoreOrder: true);
+    }
+
+    [Test]
+    public void EngineUpgradePhases_AreFrozenInOrder()
+    {
+        Enum.GetNames<EngineUpgradePhase>().ShouldBe(
+        [
+            "Accepted", "ArtifactReady", "ApplicationStopped", "SnapshotTaken", "DumpCreated", "OldEngineStopped",
+            "NewEngineActive", "Restored", "Verified", "ConfigurationCommitted", "ApplicationHealthy", "Committed",
+            "RolledBack", "RollbackFailed",
+        ]);
+        Enum.GetValues<EngineUpgradePhase>().Select(phase => (int)phase).ShouldBe(Enumerable.Range(0, 14));
+    }
+
+    [Test]
+    public void EngineUpgradeOptionDefaults_AreFrozen()
+    {
+        var defaults = new UpdaterOptions();
+
+        defaults.PostgresServiceName.ShouldBe("postgres");
+        defaults.PostgresImageRepository.ShouldBe("ghcr.io/heribertg/klacks-postgres");
+        defaults.PostgresImageEnvVar.ShouldBe("KLACKS_POSTGRES_IMAGE");
+        defaults.PostgresDataSubdirEnvVar.ShouldBe("KLACKS_POSTGRES_DATA_SUBDIR");
+        defaults.NativePostgresServiceName.ShouldBe("KlacksPostgres");
+        defaults.AllowUnsignedEngineUpgrade.ShouldBeFalse();
+        defaults.EngineUpgradeFaultPhase.ShouldBeNull();
+        UpdaterConstants.DockerEngineUpgradeExchangeDirectory.ShouldBe("/var/lib/postgresql/data/engine-upgrade");
     }
 
     [Test]

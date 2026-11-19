@@ -1,5 +1,7 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
+using Klacks.Updater.Domain.EngineUpgrade;
+
 namespace Klacks.Updater.Application;
 
 /// <summary>
@@ -7,7 +9,11 @@ namespace Klacks.Updater.Application;
 /// drive the Docker applier; the trust root (manifest URL, signature key) and DB connection are
 /// supplied the same way. Nothing about the update source is hard-coded. Mode=Native switches to the native adapters:
 /// NativeProgramRoot holds versions/&lt;x&gt; plus the "current" link the service runs from, NativeServiceName is the
-/// Windows service name or launchd label, PostgresBinDirectory locates pg_dump/psql (empty: PATH).
+/// Windows service name or launchd label, PostgresBinDirectory locates pg_dump/psql (empty: PATH). The Postgres* engine
+/// options describe where a PostgreSQL major upgrade finds the compose service, the trusted image repository, the two
+/// compose variables it switches and the native Windows service. Engine upgrades always require a valid signature;
+/// AllowUnsignedEngineUpgrade lifts that for tests only, and EngineUpgradeFaultPhase (tests only) makes the upgrade
+/// throw right after reaching that phase so every revert path can be exercised.
 /// </summary>
 public class UpdaterOptions
 {
@@ -72,4 +78,18 @@ public class UpdaterOptions
     public string PostgresBinDirectory { get; set; } = string.Empty;
 
     public int NativeRetainedVersions { get; set; } = 3;
+
+    public string PostgresServiceName { get; set; } = "postgres";
+
+    public string PostgresImageRepository { get; set; } = "ghcr.io/heribertg/klacks-postgres";
+
+    public string PostgresImageEnvVar { get; set; } = "KLACKS_POSTGRES_IMAGE";
+
+    public string PostgresDataSubdirEnvVar { get; set; } = "KLACKS_POSTGRES_DATA_SUBDIR";
+
+    public string NativePostgresServiceName { get; set; } = "KlacksPostgres";
+
+    public bool AllowUnsignedEngineUpgrade { get; set; }
+
+    public EngineUpgradePhase? EngineUpgradeFaultPhase { get; set; }
 }

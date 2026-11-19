@@ -8,4 +8,5 @@ public enum UpdateOperationType
     Rollback = 1,
     WhisperInstall = 2,
     WhisperUninstall = 3,
+    PostgresUpgrade = 4,
 }

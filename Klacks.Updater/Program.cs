@@ -2,8 +2,12 @@
 
 using Klacks.Updater;
 using Klacks.Updater.Application;
+using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
+using Klacks.Updater.Domain.EngineUpgrade;
 using Klacks.Updater.Infrastructure;
+using Klacks.Updater.Infrastructure.EngineUpgrade;
+using Klacks.Updater.Infrastructure.EngineUpgrade.Docker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -37,6 +41,7 @@ if (mode == UpdaterMode.Native)
     builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
     builder.Services.AddSingleton<IInstalledVersionReconciler, NativeInstalledVersionReconciler>();
+    builder.Services.AddSingleton<IEngineUpgradeTarget, UnsupportedEngineUpgradeTarget>();
     builder.Services.PostConfigure<UpdaterOptions>(options =>
         options.SttBaseUrl = SttServiceRegistration.ResolveNativeBaseUrl(options.SttBaseUrl));
     if (OperatingSystem.IsWindows())
@@ -65,6 +70,7 @@ else
     builder.Services.AddSingleton<IUpdateBackupService, PgDumpBackupService>();
     builder.Services.AddSingleton<IWhisperPluginApplier, DockerWhisperApplier>();
     builder.Services.AddSingleton<IInstalledVersionReconciler, NoOpInstalledVersionReconciler>();
+    builder.Services.AddSingleton<IEngineUpgradeTarget, DockerEngineUpgradeTarget>();
 }
 
 builder.Services.AddSingleton<IUpdateHealthGate, HttpHealthGate>();
@@ -83,6 +89,7 @@ else
 
 builder.Services.AddSingleton<UpdateExecutor>();
 builder.Services.AddSingleton<WhisperPluginExecutor>();
+builder.Services.AddSingleton<EngineUpgradeExecutor>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

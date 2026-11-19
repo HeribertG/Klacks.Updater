@@ -2,14 +2,19 @@
 
 /// <summary>
 /// Background loop that drives the hand-off queue: on startup reclaims stuck (lease-expired) Running
-/// rows, then repeatedly claims the next Pending operation, runs the executor while heartbeating the
-/// lease, and writes the terminal status back. The updater never updates itself — only api/ui.
+/// rows, then repeatedly claims the next Pending operation, routes it by type to its executor while heartbeating the
+/// lease, and writes the terminal status back. An unknown operation type fails without any change, so a newer row
+/// can never be mistaken for an application update. The updater never updates itself — only api/ui.
 /// </summary>
 /// <param name="store">Hand-off queue access</param>
 /// <param name="executor">The update/rollback state machine</param>
+/// <param name="whisperExecutor">Installs or removes the self-hosted speech-to-text plugin</param>
+/// <param name="engineUpgradeExecutor">Runs PostgreSQL engine upgrades</param>
+/// <param name="retention">Prunes old backups after every operation</param>
 /// <param name="installedVersionReconciler">Aligns the operating system's installation entry with the running version on startup</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using Klacks.Updater.Application;
+using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
 
 namespace Klacks.Updater;
@@ -19,6 +24,7 @@ public class Worker : BackgroundService
     private readonly IUpdateOperationStore _store;
     private readonly UpdateExecutor _executor;
     private readonly WhisperPluginExecutor _whisperExecutor;
+    private readonly EngineUpgradeExecutor _engineUpgradeExecutor;
     private readonly IBackupRetentionService _retention;
     private readonly IInstalledVersionReconciler _installedVersionReconciler;
     private readonly ILogger<Worker> _logger;
@@ -27,6 +33,7 @@ public class Worker : BackgroundService
         IUpdateOperationStore store,
         UpdateExecutor executor,
         WhisperPluginExecutor whisperExecutor,
+        EngineUpgradeExecutor engineUpgradeExecutor,
         IBackupRetentionService retention,
         IInstalledVersionReconciler installedVersionReconciler,
         ILogger<Worker> logger)
@@ -34,6 +41,7 @@ public class Worker : BackgroundService
         _store = store;
         _executor = executor;
         _whisperExecutor = whisperExecutor;
+        _engineUpgradeExecutor = engineUpgradeExecutor;
         _retention = retention;
         _installedVersionReconciler = installedVersionReconciler;
         _logger = logger;
@@ -99,9 +107,7 @@ public class Worker : BackgroundService
         try
         {
             _logger.LogInformation("Executing {Type} operation {Id} (target {Target}).", operation.OperationType, operation.Id, operation.TargetVersion);
-            var result = IsWhisperOperation(operation.OperationType)
-                ? await _whisperExecutor.ExecuteAsync(operation, stoppingToken)
-                : await _executor.ExecuteAsync(operation, stoppingToken);
+            var result = await DispatchAsync(operation, stoppingToken);
             await _store.CompleteAsync(operation.Id, result.Status, result.Message, result.BackupRef, stoppingToken);
             _logger.LogInformation("Operation {Id} finished with status {Status}.", operation.Id, result.Status);
         }
@@ -159,8 +165,20 @@ public class Worker : BackgroundService
         }
     }
 
-    private static bool IsWhisperOperation(UpdateOperationType type) =>
-        type is UpdateOperationType.WhisperInstall or UpdateOperationType.WhisperUninstall;
+    private Task<UpdateExecutionResult> DispatchAsync(UpdateOperation operation, CancellationToken stoppingToken) =>
+        operation.OperationType switch
+        {
+            UpdateOperationType.Update or UpdateOperationType.Rollback => _executor.ExecuteAsync(operation, stoppingToken),
+            UpdateOperationType.WhisperInstall or UpdateOperationType.WhisperUninstall => _whisperExecutor.ExecuteAsync(operation, stoppingToken),
+            UpdateOperationType.PostgresUpgrade => _engineUpgradeExecutor.ExecuteAsync(operation, stoppingToken),
+            _ => Task.FromResult(RejectUnknownType(operation)),
+        };
+
+    private UpdateExecutionResult RejectUnknownType(UpdateOperation operation)
+    {
+        _logger.LogError("Operation {Id} has unknown type {Type}; rejected without any change.", operation.Id, (int)operation.OperationType);
+        return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"Unknown operation type {(int)operation.OperationType}." + UpdaterConstants.NothingChangedSuffix);
+    }
 
     private async Task SafeCompleteAsync(Guid id, UpdateExecutionStatus status, string message)
     {

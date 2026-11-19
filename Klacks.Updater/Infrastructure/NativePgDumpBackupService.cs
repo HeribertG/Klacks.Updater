@@ -6,7 +6,8 @@
 /// passed through the libpq environment (PGHOST, PGPASSWORD, ...) so the password never appears on a command line.
 /// Dump format and the drop-and-recreate restore are identical to the Docker variant.
 /// </summary>
-/// <param name="options">Updater configuration (connection string, PostgreSQL bin directory, backup directory)</param>
+/// <param name="options">Updater configuration (connection string, backup directory)</param>
+/// <param name="binLocator">Resolves the bin directory of the active engine (follows an engine upgrade)</param>
 /// <param name="logger">Logger for diagnostic output</param>
 
 using Klacks.Updater.Application;
@@ -26,10 +27,12 @@ public class NativePgDumpBackupService : IUpdateBackupService
 
     private readonly UpdaterOptions _options;
     private readonly NpgsqlConnectionStringBuilder _connection;
+    private readonly IPostgresBinLocator _binLocator;
     private readonly ILogger<NativePgDumpBackupService> _logger;
 
-    public NativePgDumpBackupService(IOptions<UpdaterOptions> options, ILogger<NativePgDumpBackupService> logger)
+    public NativePgDumpBackupService(IOptions<UpdaterOptions> options, IPostgresBinLocator binLocator, ILogger<NativePgDumpBackupService> logger)
     {
+        _binLocator = binLocator;
         _options = options.Value;
         _connection = new NpgsqlConnectionStringBuilder(_options.ConnectionString);
         _logger = logger;
@@ -86,9 +89,10 @@ public class NativePgDumpBackupService : IUpdateBackupService
 
     private string Executable(string name)
     {
-        return string.IsNullOrWhiteSpace(_options.PostgresBinDirectory)
+        var binDirectory = _binLocator.ResolveBinDirectory();
+        return string.IsNullOrWhiteSpace(binDirectory)
             ? name
-            : Path.Combine(_options.PostgresBinDirectory, name);
+            : Path.Combine(binDirectory, name);
     }
 
     private Dictionary<string, string> LibpqEnvironment()

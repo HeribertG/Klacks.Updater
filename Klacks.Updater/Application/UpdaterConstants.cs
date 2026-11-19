@@ -37,4 +37,5 @@ public static class UpdaterConstants
     public const string DockerEngineUpgradeExchangeDirectory = "/var/lib/postgresql/data/" + EngineUpgradeDirectoryName;
     public const string EngineUpgradeDirectoryName = "engine-upgrade";
     public const string NothingChangedSuffix = " Nothing was changed.";
+    public static readonly TimeSpan StartupRetryInterval = TimeSpan.FromSeconds(15);
 }

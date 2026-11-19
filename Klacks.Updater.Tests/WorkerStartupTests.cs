@@ -3,13 +3,12 @@
 namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
-using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
-using Klacks.Updater.Infrastructure.EngineUpgrade;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using NUnit.Framework;
+using Shouldly;
 
 [TestFixture]
 public class WorkerStartupTests
@@ -19,6 +18,7 @@ public class WorkerStartupTests
     private IUpdateOperationStore _store = null!;
     private IInstalledVersionReconciler _reconciler = null!;
     private TaskCompletionSource _polling = null!;
+    private EngineUpgradeHarness _engine = null!;
 
     [SetUp]
     public void SetUp()
@@ -32,7 +32,11 @@ public class WorkerStartupTests
             return Task.FromResult<UpdateOperation?>(null);
         });
         _reconciler = Substitute.For<IInstalledVersionReconciler>();
+        _engine = new EngineUpgradeHarness();
     }
+
+    [TearDown]
+    public void TearDown() => _engine.Dispose();
 
     private Worker CreateWorker()
     {
@@ -53,7 +57,8 @@ public class WorkerStartupTests
             _store,
             executor,
             whisperExecutor,
-            new EngineUpgradeExecutor(new UnsupportedEngineUpgradeTarget(), NullLogger<EngineUpgradeExecutor>.Instance),
+            _engine.Executor,
+            _engine.Recovery,
             Substitute.For<IBackupRetentionService>(),
             _reconciler,
             NullLogger<Worker>.Instance);
@@ -88,5 +93,35 @@ public class WorkerStartupTests
         await worker.StopAsync(stopTimeout.Token);
 
         await _store.Received(1).ReclaimStuckAsync(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Startup_recovers_an_open_engine_upgrade_before_reclaiming_stuck_rows()
+    {
+        await _engine.Journal.SaveAsync(
+            new Klacks.Updater.Domain.EngineUpgrade.EngineUpgradeJournalEntry
+            {
+                Schema = 1,
+                OperationId = Guid.NewGuid(),
+                FromMajor = 17,
+                ToMajor = 19,
+                Phase = Klacks.Updater.Domain.EngineUpgrade.EngineUpgradePhase.Restored,
+                Old = new Dictionary<string, string> { ["oldImage"] = "pg17" },
+                AppVersion = EngineUpgradeHarness.AppVersion,
+            },
+            CancellationToken.None);
+        using var worker = CreateWorker();
+
+        await worker.StartAsync(CancellationToken.None);
+        await _polling.Task.WaitAsync(PollingTimeout);
+        using var stopTimeout = new CancellationTokenSource(PollingTimeout);
+        await worker.StopAsync(stopTimeout.Token);
+
+        Received.InOrder(() =>
+        {
+            _engine.Store.CompleteAsync(Arg.Any<Guid>(), UpdateExecutionStatus.RolledBack, Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            _store.ReclaimStuckAsync(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        });
+        _engine.Target.Calls.ShouldContain(FakeEngineUpgradeTarget.Revert);
     }
 }

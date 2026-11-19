@@ -17,4 +17,6 @@ public interface IUpdateOperationStore
     Task<int> ReclaimStuckAsync(TimeSpan leaseTimeout, CancellationToken cancellationToken = default);
 
     Task<int> GetBackupRetentionCountAsync(int defaultCount, CancellationToken cancellationToken = default);
+
+    Task UpsertSettingAsync(string type, string value, CancellationToken cancellationToken = default);
 }

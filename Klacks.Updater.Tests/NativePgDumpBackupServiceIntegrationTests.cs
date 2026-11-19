@@ -4,6 +4,8 @@ namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
 using Klacks.Updater.Infrastructure;
+using Klacks.Updater.Infrastructure.EngineUpgrade.Native;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -88,13 +90,15 @@ public class NativePgDumpBackupServiceIntegrationTests
     [Test]
     public async Task Backup_then_restore_brings_back_the_state_and_removes_later_tables()
     {
+        var options = Options.Create(new UpdaterOptions
+        {
+            ConnectionString = DatabaseConnection(),
+            BackupDirectory = _backupDirectory,
+            PostgresBinDirectory = Environment.GetEnvironmentVariable(BinVariable) ?? string.Empty,
+        });
         var service = new NativePgDumpBackupService(
-            Options.Create(new UpdaterOptions
-            {
-                ConnectionString = DatabaseConnection(),
-                BackupDirectory = _backupDirectory,
-                PostgresBinDirectory = Environment.GetEnvironmentVariable(BinVariable) ?? string.Empty,
-            }),
+            options,
+            new NativePostgresBinLocator(options, new ConfigurationBuilder().Build()),
             NullLogger<NativePgDumpBackupService>.Instance);
 
         var backup = await service.CreateAsync();

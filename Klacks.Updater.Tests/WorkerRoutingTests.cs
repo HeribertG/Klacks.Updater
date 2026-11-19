@@ -3,9 +3,7 @@
 namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
-using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
-using Klacks.Updater.Domain.EngineUpgrade;
 using Klacks.Updater.Infrastructure.EngineUpgrade;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -22,7 +20,7 @@ public class WorkerRoutingTests
     private IUpdateOperationStore _store = null!;
     private IUpdateApplier _applier = null!;
     private IWhisperPluginApplier _whisperApplier = null!;
-    private IEngineUpgradeTarget _engineTarget = null!;
+    private EngineUpgradeHarness _engine = null!;
     private TaskCompletionSource<(UpdateExecutionStatus Status, string Message)> _completed = null!;
 
     [SetUp]
@@ -31,9 +29,8 @@ public class WorkerRoutingTests
         _store = Substitute.For<IUpdateOperationStore>();
         _applier = Substitute.For<IUpdateApplier>();
         _whisperApplier = Substitute.For<IWhisperPluginApplier>();
-        _engineTarget = Substitute.For<IEngineUpgradeTarget>();
-        _engineTarget.InspectAsync(Arg.Any<CancellationToken>())
-            .Returns(new EngineInspection(0, new Dictionary<string, string>(), 0, UnsupportedEngineUpgradeTarget.Reason));
+        _engine = new EngineUpgradeHarness();
+        _engine.Target.Inspection = _engine.Target.Inspection with { UnsupportedReason = UnsupportedEngineUpgradeTarget.Reason };
         _completed = new TaskCompletionSource<(UpdateExecutionStatus, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
         _store.CompleteAsync(Arg.Any<Guid>(), Arg.Any<UpdateExecutionStatus>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
@@ -42,6 +39,9 @@ public class WorkerRoutingTests
                 return Task.CompletedTask;
             });
     }
+
+    [TearDown]
+    public void TearDown() => _engine.Dispose();
 
     private async Task<(UpdateExecutionStatus Status, string Message)> RunAsync(UpdateOperationType type)
     {
@@ -73,7 +73,8 @@ public class WorkerRoutingTests
             _store,
             executor,
             whisperExecutor,
-            new EngineUpgradeExecutor(_engineTarget, NullLogger<EngineUpgradeExecutor>.Instance),
+            _engine.Executor,
+            _engine.Recovery,
             Substitute.For<IBackupRetentionService>(),
             Substitute.For<IInstalledVersionReconciler>(),
             NullLogger<Worker>.Instance);
@@ -91,7 +92,7 @@ public class WorkerRoutingTests
         var (status, _) = await RunAsync(UpdateOperationType.PostgresUpgrade);
 
         status.ShouldBe(UpdateExecutionStatus.Failed);
-        await _engineTarget.Received(1).InspectAsync(Arg.Any<CancellationToken>());
+        _engine.Target.Calls.ShouldBe([FakeEngineUpgradeTarget.Inspect]);
         _applier.ReceivedCalls().ShouldBeEmpty();
         _whisperApplier.ReceivedCalls().ShouldBeEmpty();
     }
@@ -105,6 +106,6 @@ public class WorkerRoutingTests
         message.ShouldContain(UnknownOperationType.ToString());
         _applier.ReceivedCalls().ShouldBeEmpty();
         _whisperApplier.ReceivedCalls().ShouldBeEmpty();
-        _engineTarget.ReceivedCalls().ShouldBeEmpty();
+        _engine.Target.Calls.ShouldBeEmpty();
     }
 }

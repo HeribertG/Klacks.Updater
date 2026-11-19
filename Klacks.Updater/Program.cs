@@ -8,6 +8,7 @@ using Klacks.Updater.Domain.EngineUpgrade;
 using Klacks.Updater.Infrastructure;
 using Klacks.Updater.Infrastructure.EngineUpgrade;
 using Klacks.Updater.Infrastructure.EngineUpgrade.Docker;
+using Klacks.Updater.Infrastructure.EngineUpgrade.Native;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -39,6 +40,7 @@ if (mode == UpdaterMode.Native)
         client.Timeout = UpdaterConstants.BundleDownloadTimeout;
     });
     builder.Services.AddSingleton<IUpdateApplier, NativeBundleApplier>();
+    builder.Services.AddSingleton<IPostgresBinLocator, NativePostgresBinLocator>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
     builder.Services.AddSingleton<IInstalledVersionReconciler, NativeInstalledVersionReconciler>();
     builder.Services.AddSingleton<IEngineUpgradeTarget, UnsupportedEngineUpgradeTarget>();
@@ -89,8 +91,14 @@ else
 
 builder.Services.AddSingleton<UpdateExecutor>();
 builder.Services.AddSingleton<WhisperPluginExecutor>();
+builder.Services.AddSingleton<IEngineSnapshotReader, NpgsqlEngineSnapshotReader>();
+builder.Services.AddSingleton<IEngineUpgradeJournal, FileEngineUpgradeJournal>();
+builder.Services.AddSingleton<IApplicationVersionReader, HttpApplicationVersionReader>();
+builder.Services.AddSingleton<EngineUpgradeFinisher>();
+builder.Services.AddSingleton<EngineUpgradeRecovery>();
 builder.Services.AddSingleton<EngineUpgradeExecutor>();
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<CapabilityReporter>();
 
 var host = builder.Build();
 host.Run();

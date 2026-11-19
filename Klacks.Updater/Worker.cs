@@ -1,8 +1,8 @@
 // Copyright (c) Heribert Gasparoli. SPDX-License-Identifier: AGPL-3.0-only
 
 /// <summary>
-/// Background loop that drives the hand-off queue: on startup reclaims stuck (lease-expired) Running
-/// rows, then repeatedly claims the next Pending operation, routes it by type to its executor while heartbeating the
+/// Background loop that drives the hand-off queue: on startup first recovers an interrupted engine upgrade, then
+/// reclaims stuck (lease-expired) Running rows (retried until the database answers once), then repeatedly claims the next Pending operation, routes it by type to its executor while heartbeating the
 /// lease, and writes the terminal status back. An unknown operation type fails without any change, so a newer row
 /// can never be mistaken for an application update. The updater never updates itself — only api/ui.
 /// </summary>
@@ -10,6 +10,7 @@
 /// <param name="executor">The update/rollback state machine</param>
 /// <param name="whisperExecutor">Installs or removes the self-hosted speech-to-text plugin</param>
 /// <param name="engineUpgradeExecutor">Runs PostgreSQL engine upgrades</param>
+/// <param name="engineUpgradeRecovery">Finishes or reverts an engine upgrade interrupted by a crash, before anything else runs</param>
 /// <param name="retention">Prunes old backups after every operation</param>
 /// <param name="installedVersionReconciler">Aligns the operating system's installation entry with the running version on startup</param>
 /// <param name="logger">Logger for diagnostic output</param>
@@ -25,6 +26,7 @@ public class Worker : BackgroundService
     private readonly UpdateExecutor _executor;
     private readonly WhisperPluginExecutor _whisperExecutor;
     private readonly EngineUpgradeExecutor _engineUpgradeExecutor;
+    private readonly EngineUpgradeRecovery _engineUpgradeRecovery;
     private readonly IBackupRetentionService _retention;
     private readonly IInstalledVersionReconciler _installedVersionReconciler;
     private readonly ILogger<Worker> _logger;
@@ -34,6 +36,7 @@ public class Worker : BackgroundService
         UpdateExecutor executor,
         WhisperPluginExecutor whisperExecutor,
         EngineUpgradeExecutor engineUpgradeExecutor,
+        EngineUpgradeRecovery engineUpgradeRecovery,
         IBackupRetentionService retention,
         IInstalledVersionReconciler installedVersionReconciler,
         ILogger<Worker> logger)
@@ -42,6 +45,7 @@ public class Worker : BackgroundService
         _executor = executor;
         _whisperExecutor = whisperExecutor;
         _engineUpgradeExecutor = engineUpgradeExecutor;
+        _engineUpgradeRecovery = engineUpgradeRecovery;
         _retention = retention;
         _installedVersionReconciler = installedVersionReconciler;
         _logger = logger;
@@ -52,18 +56,8 @@ public class Worker : BackgroundService
         _logger.LogInformation("Klacks updater started.");
         ReconcileInstalledVersion();
 
-        try
-        {
-            var reclaimed = await _store.ReclaimStuckAsync(UpdaterConstants.StuckLeaseTimeout, stoppingToken);
-            if (reclaimed > 0)
-            {
-                _logger.LogWarning("Reclaimed {Count} stuck operation(s) on startup.", reclaimed);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to reclaim stuck operations on startup.");
-        }
+        await RecoverEngineUpgradeAsync(stoppingToken);
+        await ReclaimStuckUntilDoneAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -84,6 +78,45 @@ public class Worker : BackgroundService
             }
 
             await RunOperationAsync(operation, stoppingToken);
+        }
+    }
+
+    private async Task RecoverEngineUpgradeAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            var recovered = await _engineUpgradeRecovery.RecoverAsync(stoppingToken);
+            if (recovered is not null)
+            {
+                _logger.LogWarning("Recovered an interrupted engine upgrade: {Status} - {Message}", recovered.Status, recovered.Message);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Recovering an interrupted engine upgrade failed.");
+        }
+    }
+
+    private async Task ReclaimStuckUntilDoneAsync(CancellationToken stoppingToken)
+    {
+        while (true)
+        {
+            try
+            {
+                var reclaimed = await _store.ReclaimStuckAsync(UpdaterConstants.StuckLeaseTimeout, stoppingToken);
+                if (reclaimed > 0)
+                {
+                    _logger.LogWarning("Reclaimed {Count} stuck operation(s) on startup.", reclaimed);
+                }
+
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Failed to reclaim stuck operations on startup; retrying.");
+            }
+
+            await Task.Delay(UpdaterConstants.StartupRetryInterval, stoppingToken);
         }
     }
 

@@ -4,7 +4,9 @@
 /// Raw-Npgsql access to the shared update_history table (no EF / no Klacks.Api dependency).
 /// Claiming is a single atomic statement (FOR UPDATE SKIP LOCKED) so overlapping updater restarts
 /// cannot double-claim. Stuck Running rows past the lease are marked Failed so the queue is never
-/// jammed forever; recovery of the affected system is then the admin's first-class manual rollback.
+/// jammed forever; recovery of the affected system is then the admin's first-class manual rollback. UpsertSettingAsync
+/// writes one settings row by its unique type (used for the updater capability report). CompleteAsync only changes a
+/// row that is still Running, so a terminal status written once (for example by the engine upgrade) is never overwritten.
 /// </summary>
 /// <param name="options">Deployment configuration (connection string)</param>
 using Klacks.Updater.Application;
@@ -77,9 +79,10 @@ public class NpgsqlUpdateOperationStore : IUpdateOperationStore
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(
-            "UPDATE update_history SET status = @status, completed_at = now(), message = @message, backup_ref = @backupRef, update_time = now() WHERE id = @id;",
+            "UPDATE update_history SET status = @status, completed_at = now(), message = @message, backup_ref = @backupRef, update_time = now() WHERE id = @id AND status = @running;",
             connection);
         command.Parameters.AddWithValue("status", (int)status);
+        command.Parameters.AddWithValue("running", StatusRunning);
         command.Parameters.AddWithValue("message", message);
         command.Parameters.AddWithValue("backupRef", (object?)backupRef ?? DBNull.Value);
         command.Parameters.AddWithValue("id", id);
@@ -105,6 +108,17 @@ public class NpgsqlUpdateOperationStore : IUpdateOperationStore
             "SELECT value FROM settings WHERE type = 'UPDATE_BACKUP_RETENTION_COUNT' LIMIT 1;", connection);
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is string s && int.TryParse(s, out var count) && count >= 0 ? count : defaultCount;
+    }
+
+    public async Task UpsertSettingAsync(string type, string value, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "INSERT INTO settings (id, type, value) VALUES (gen_random_uuid(), @type, @value) ON CONFLICT (type) DO UPDATE SET value = EXCLUDED.value;",
+            connection);
+        command.Parameters.AddWithValue("type", type);
+        command.Parameters.AddWithValue("value", value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken)

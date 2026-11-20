@@ -86,6 +86,8 @@ public class DockerApplier : IUpdateApplier
             await _runner.RunAsync(Docker, ["compose", "up", "-d", _options.UiServiceName], _options.ComposeProjectDir, env, cancellationToken);
         }
 
+        await DockerProxyRefresher.RefreshAsync(_runner, _options, _logger, cancellationToken);
+
         await PersistTagsAsync(env, cancellationToken);
 
         if (sttUpdate is not null)

@@ -61,6 +61,18 @@ public class DockerApplierTests
     }
 
     [Test]
+    public async Task Activate_RestartsTheProxyAfterApiAndUiAreUp()
+    {
+        var runner = RunnerWithLabel(string.Empty);
+
+        await Create(runner).ActivateVersionAsync("1.0.50");
+
+        var restart = runner.Calls.IndexOf("compose restart nginx-proxy");
+        restart.ShouldBeGreaterThan(runner.Calls.IndexOf("compose up -d klacks-api"));
+        restart.ShouldBeGreaterThan(runner.Calls.IndexOf("compose up -d klacks-ui"));
+    }
+
+    [Test]
     public async Task Activate_LabelPresent_ReadsLabelAfterApiPullBeforeApiUp()
     {
         var runner = RunnerWithLabel("1.1.0");

@@ -165,8 +165,11 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
     public Task StopApplicationAsync(CancellationToken cancellationToken) =>
         ComposeAsync(["stop", _options.ApiServiceName], cancellationToken);
 
-    public Task StartApplicationAsync(CancellationToken cancellationToken) =>
-        ComposeAsync(["start", _options.ApiServiceName], cancellationToken);
+    public async Task StartApplicationAsync(CancellationToken cancellationToken)
+    {
+        await ComposeAsync(["start", _options.ApiServiceName], cancellationToken);
+        await DockerProxyRefresher.RefreshAsync(_runner, _options, _logger, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<EngineDump>> DumpAsync(
         EngineUpgradeContext context, IReadOnlyList<EngineDatabase> databases, CancellationToken cancellationToken)

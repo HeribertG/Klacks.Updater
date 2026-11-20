@@ -47,6 +47,8 @@ public class UpdaterOptions
 
     public string UiTagEnvVar { get; set; } = "KLACKS_UI_TAG";
 
+    public string ProxyServiceName { get; set; } = "nginx-proxy";
+
     public string PostgresContainer { get; set; } = "klacks-postgres";
 
     public string PostgresUser { get; set; } = "admin";

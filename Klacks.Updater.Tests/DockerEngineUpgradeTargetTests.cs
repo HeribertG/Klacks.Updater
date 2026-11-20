@@ -19,6 +19,7 @@ public class DockerEngineUpgradeTargetTests
     private const string Config = "compose config --format json postgres";
     private const string StopApi = "compose stop klacks-api";
     private const string StartApi = "compose start klacks-api";
+    private const string RestartProxy = "compose restart nginx-proxy";
     private const string UpPostgres = "compose up -d --wait --wait-timeout 600 postgres";
     private const string PrintDataDirectory = "exec klacks-postgres printenv PGDATA";
     private const string Psql = "exec klacks-postgres psql -X -v ON_ERROR_STOP=1 -U admin -d postgres -tA -c ";
@@ -252,6 +253,7 @@ public class DockerEngineUpgradeTargetTests
             Psql + "CREATE DATABASE \"klacks_diag\" WITH OWNER \"admin\" TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' LOCALE_PROVIDER icu LOCALE 'und'",
             "exec klacks-postgres pg_restore --exit-on-error -U admin -d dbname='klacks_diag' " + DumpDirectory + "/001.dump",
             StartApi,
+            RestartProxy,
         ]);
         ReadEnv().ShouldBe(
             ["POSTGRES_PASSWORD=secret", "KLACKS_POSTGRES_IMAGE=" + PinnedImage, "KLACKS_POSTGRES_DATA_SUBDIR=pg19", "KLACKS_API_TAG=1.0.78"]);
@@ -599,6 +601,26 @@ public class DockerEngineUpgradeTargetTests
         await target.StartApplicationAsync(CancellationToken.None);
         await target.StartApplicationAsync(CancellationToken.None);
 
-        _docker.Runner.Calls.ShouldBe([StopApi, StopApi, StartApi, StartApi]);
+        _docker.Runner.Calls.ShouldBe([StopApi, StopApi, StartApi, RestartProxy, StartApi, RestartProxy]);
+    }
+
+    [Test]
+    public async Task StartApplication_ProxyRestartFails_DoesNotThrow()
+    {
+        _docker.FailOn = RestartProxy;
+
+        await CreateTarget().StartApplicationAsync(CancellationToken.None);
+
+        _docker.Runner.Calls.ShouldBe([StartApi, RestartProxy]);
+    }
+
+    [Test]
+    public async Task StartApplication_NoProxyService_StartsOnlyTheApi()
+    {
+        _options.ProxyServiceName = string.Empty;
+
+        await CreateTarget().StartApplicationAsync(CancellationToken.None);
+
+        _docker.Runner.Calls.ShouldBe([StartApi]);
     }
 }

@@ -34,7 +34,7 @@ public class EngineUpgradeSignatureAndReportTests
         var engine = EngineUpgradeHarness.Operation() with { ArtifactSignature = "anything" };
 
         verifier.Verify(engine).ShouldBeFalse();
-        verifier.Verify(engine with { OperationType = UpdateOperationType.Update }).ShouldBeTrue();
+        verifier.Verify(engine with { OperationType = UpdateOperationType.Update, TargetVersion = "1.0.79" }).ShouldBeTrue();
     }
 
     [Test]

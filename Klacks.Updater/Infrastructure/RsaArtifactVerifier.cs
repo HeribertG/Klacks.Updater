@@ -6,7 +6,7 @@
 /// mode (allowed, but logged as a warning); once a key is set, a missing or invalid signature is
 /// rejected so an unsigned or tampered artifact is never applied. A PostgreSQL engine upgrade always requires a
 /// configured key and a valid signature over its domain-separated payload; only Updater:AllowUnsignedEngineUpgrade
-/// (tests) lifts that. A signed field containing a line break is always rejected, so no field can forge the
+/// (tests) lifts that. Signed fields are format-checked first (SignedFieldFormat), so no field can forge the
 /// newline-separated payload of another operation type.
 /// </summary>
 /// <param name="options">Deployment trust configuration (signature public key)</param>
@@ -33,9 +33,9 @@ public class RsaArtifactVerifier : IArtifactVerifier
 
     public bool Verify(UpdateOperation operation)
     {
-        if (HasLineBreak(operation.TargetVersion) || HasLineBreak(operation.ArtifactRef) || HasLineBreak(operation.ArtifactSha256))
+        if (!SignedFieldFormat.IsValid(operation))
         {
-            _logger.LogError("Operation {Id} rejected: a signed field contains a line break.", operation.Id);
+            _logger.LogError("Operation {Id} rejected: a signed field has an invalid format.", operation.Id);
             return false;
         }
 
@@ -85,6 +85,4 @@ public class RsaArtifactVerifier : IArtifactVerifier
             return false;
         }
     }
-
-    private static bool HasLineBreak(string? value) => value is not null && value.AsSpan().IndexOfAny('\r', '\n') >= 0;
 }

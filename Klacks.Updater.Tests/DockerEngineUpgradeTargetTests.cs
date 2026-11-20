@@ -90,7 +90,10 @@ public class DockerEngineUpgradeTargetTests
     private string[] ReadEnv() => File.ReadAllLines(EnvPath);
 
     private DockerEngineUpgradeTarget CreateTarget() =>
-        new(Options.Create(_options), _docker.Runner, NullLogger<DockerEngineUpgradeTarget>.Instance);
+        new(Options.Create(_options), _docker.Runner, NullLogger<DockerEngineUpgradeTarget>.Instance, TimeSpan.Zero);
+
+    private int ReadinessProbeCount() =>
+        _docker.Runner.Calls.Count(call => call.StartsWith("exec klacks-postgres pg_isready ", StringComparison.Ordinal));
 
     private static EngineUpgradeContext ContextFor(EngineInspection inspection) =>
         new(OperationId, 17, 19, ArtifactRef, Digest, new Dictionary<string, string>(inspection.OldState), new Dictionary<string, string>());
@@ -403,6 +406,30 @@ public class DockerEngineUpgradeTargetTests
 
         await Should.ThrowAsync<InvalidOperationException>(() => RunForwardAsync(CreateTarget(), StepsUntilRestore));
 
+        _docker.Runner.Calls.ShouldNotContain(call => call.Contains("DROP DATABASE", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Restore_NewServerAcceptsTcpAfterRetries_ContinuesWithTheRestore()
+    {
+        File.WriteAllLines(EnvPath, PinnedSeventeenEnv);
+        _docker.ReadinessFailures = 2;
+
+        await RunForwardAsync(CreateTarget(), StepsUntilRestore);
+
+        ReadinessProbeCount().ShouldBe(3);
+        _docker.Runner.Calls.ShouldContain(call => call.Contains("DROP DATABASE", StringComparison.Ordinal));
+    }
+
+    [Test]
+    public async Task Restore_NewServerNeverAcceptsTcp_FailsAfterAllAttemptsWithoutDroppingDatabases()
+    {
+        File.WriteAllLines(EnvPath, PinnedSeventeenEnv);
+        _docker.ReadinessFailures = int.MaxValue;
+
+        await Should.ThrowAsync<InvalidOperationException>(() => RunForwardAsync(CreateTarget(), StepsUntilRestore));
+
+        ReadinessProbeCount().ShouldBe(DockerEngineUpgradeTarget.ReadinessAttempts);
         _docker.Runner.Calls.ShouldNotContain(call => call.Contains("DROP DATABASE", StringComparison.Ordinal));
     }
 

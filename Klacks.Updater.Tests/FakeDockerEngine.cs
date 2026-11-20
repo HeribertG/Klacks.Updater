@@ -43,6 +43,8 @@ public sealed class FakeDockerEngine
 
     public string? FailOn { get; set; }
 
+    public int ReadinessFailures { get; set; }
+
     public HashSet<string> Files { get; } = new(StringComparer.Ordinal);
 
     private string Handle(string call)
@@ -50,6 +52,12 @@ public sealed class FakeDockerEngine
         if (FailOn is not null && call.StartsWith(FailOn, StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"'docker {call}' exited 1: simulated failure");
+        }
+
+        if (call.StartsWith("exec klacks-postgres pg_isready ", StringComparison.Ordinal) && ReadinessFailures > 0)
+        {
+            ReadinessFailures--;
+            throw new InvalidOperationException($"'docker {call}' exited 2: no response");
         }
 
         if (call == "compose config --format json postgres")

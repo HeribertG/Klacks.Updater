@@ -31,10 +31,17 @@ public sealed class FakeEngineUpgradeTarget : IEngineUpgradeTarget
 
     public EngineUpgradeContext? RevertContext { get; private set; }
 
-    public Task<EngineInspection> InspectAsync(CancellationToken cancellationToken)
+    public Func<Task>? DuringInspect { get; set; }
+
+    public async Task<EngineInspection> InspectAsync(CancellationToken cancellationToken)
     {
         Calls.Add(Inspect);
-        return Task.FromResult(Inspection);
+        if (DuringInspect is not null)
+        {
+            await DuringInspect();
+        }
+
+        return Inspection;
     }
 
     public Task PrepareArtifactAsync(EngineUpgradeContext context, CancellationToken cancellationToken) => Step(Prepare, context);

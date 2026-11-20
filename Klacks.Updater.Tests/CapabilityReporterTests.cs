@@ -65,6 +65,17 @@ public class CapabilityReporterTests
     }
 
     [Test]
+    public async Task Upgrade_starting_during_the_inspection_suppresses_the_write()
+    {
+        _engine.Target.DuringInspect = () =>
+            _engine.Journal.SaveAsync(new EngineUpgradeJournalEntry { OperationId = Guid.NewGuid() }, CancellationToken.None);
+
+        await Reporter().ReportOnceAsync(CancellationToken.None);
+
+        _store.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Test]
     public async Task Database_failure_is_swallowed()
     {
         _store.UpsertSettingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())

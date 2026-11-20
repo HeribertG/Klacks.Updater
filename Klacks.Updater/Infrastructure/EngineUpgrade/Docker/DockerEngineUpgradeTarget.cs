@@ -23,6 +23,7 @@
 /// <param name="options">Compose project directory, service and container names, postgres user, trusted image repository and variable names</param>
 /// <param name="runner">Runs the docker CLI with argument lists</param>
 /// <param name="logger">Logger for diagnostic output</param>
+/// <param name="readinessDelay">Pause between two TCP readiness probes of the new server (default 2 s; tests pass zero)</param>
 using System.Text.Json;
 using Klacks.Updater.Application;
 using Klacks.Updater.Domain;
@@ -48,18 +49,24 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
     private const string DataDirectoryVariable = "PGDATA";
     private const string Loopback = "127.0.0.1";
     private const string ComposeConfigFailedMessage = "'docker compose config' failed; its output is withheld because it contains secrets.";
-    private const int ReadinessAttempts = 30;
-    private static readonly TimeSpan ReadinessDelay = TimeSpan.FromSeconds(2);
+    public const int ReadinessAttempts = 30;
+    private static readonly TimeSpan DefaultReadinessDelay = TimeSpan.FromSeconds(2);
 
     private readonly UpdaterOptions _options;
     private readonly IProcessRunner _runner;
     private readonly ILogger<DockerEngineUpgradeTarget> _logger;
+    private readonly TimeSpan _readinessDelay;
 
-    public DockerEngineUpgradeTarget(IOptions<UpdaterOptions> options, IProcessRunner runner, ILogger<DockerEngineUpgradeTarget> logger)
+    public DockerEngineUpgradeTarget(
+        IOptions<UpdaterOptions> options,
+        IProcessRunner runner,
+        ILogger<DockerEngineUpgradeTarget> logger,
+        TimeSpan? readinessDelay = null)
     {
         _options = options.Value;
         _runner = runner;
         _logger = logger;
+        _readinessDelay = readinessDelay ?? DefaultReadinessDelay;
     }
 
     private string Container => _options.PostgresContainer;
@@ -361,7 +368,7 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
             }
             catch (InvalidOperationException) when (attempt < ReadinessAttempts)
             {
-                await Task.Delay(ReadinessDelay, cancellationToken);
+                await Task.Delay(_readinessDelay, cancellationToken);
             }
         }
     }

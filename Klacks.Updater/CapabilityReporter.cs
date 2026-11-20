@@ -3,8 +3,10 @@
 /// <summary>
 /// Upserts the UPDATER_CAPABILITIES setting at start and every 15 minutes (the nightly reset of the playground deletes
 /// it). "postgres-engine-upgrade/1" is reported only while the registered engine upgrade target inspects as
-/// supported. Nothing is written while an engine upgrade journal exists, so the report never changes row counts between
-/// the snapshot and the verification of an upgrade. Failures (database down) are logged and retried at the next tick.
+/// supported. The journal is checked before the (slow) inspection and again right before the write, so an upgrade that
+/// starts meanwhile suppresses the report; the remaining window (one database round trip) closes long before the upgrade
+/// takes its snapshot, which follows the artifact pull and the application stop. Failures (database down) are logged and
+/// retried at the next tick.
 /// </summary>
 /// <param name="store">settings access</param>
 /// <param name="target">Engine upgrade target of this deployment</param>
@@ -71,6 +73,11 @@ public class CapabilityReporter : BackgroundService
                 ? [EngineUpgradeConstants.EngineUpgradeCapability]
                 : [];
             var value = UpdaterCapabilityReport.Build(UpdaterVersion, _options.Mode, capabilities, DateTime.UtcNow);
+            if (_journal.Exists())
+            {
+                return;
+            }
+
             await _store.UpsertSettingAsync(EngineUpgradeConstants.CapabilitySettingType, value, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

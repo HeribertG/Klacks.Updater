@@ -59,4 +59,30 @@ public class AtomicFileTests
 
         File.GetUnixFileMode(path).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
+
+    [Test]
+    [Platform(Exclude = "Win")]
+    public async Task WriteAllLinesAsync_creates_a_new_file_owner_only()
+    {
+        var path = Path.Combine(_directory, ".env");
+
+        await AtomicFile.WriteAllLinesAsync(path, ["SECRET=1"]);
+
+        File.GetUnixFileMode(path).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    [Test]
+    [Platform(Exclude = "Win")]
+    public async Task WriteAllLinesAsync_does_not_reuse_a_world_readable_leftover_temporary_file()
+    {
+        var path = Path.Combine(_directory, ".env");
+        var leftover = path + ".updater-tmp";
+        await File.WriteAllLinesAsync(leftover, ["STALE=1"]);
+        File.SetUnixFileMode(leftover, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        await AtomicFile.WriteAllLinesAsync(path, ["SECRET=1"]);
+
+        File.GetUnixFileMode(path).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        (await File.ReadAllLinesAsync(path)).ShouldBe(["SECRET=1"]);
+    }
 }

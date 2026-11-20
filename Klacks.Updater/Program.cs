@@ -43,7 +43,6 @@ if (mode == UpdaterMode.Native)
     builder.Services.AddSingleton<IPostgresBinLocator, NativePostgresBinLocator>();
     builder.Services.AddSingleton<IUpdateBackupService, NativePgDumpBackupService>();
     builder.Services.AddSingleton<IInstalledVersionReconciler, NativeInstalledVersionReconciler>();
-    builder.Services.AddSingleton<IEngineUpgradeTarget, UnsupportedEngineUpgradeTarget>();
     builder.Services.PostConfigure<UpdaterOptions>(options =>
         options.SttBaseUrl = SttServiceRegistration.ResolveNativeBaseUrl(options.SttBaseUrl));
     if (OperatingSystem.IsWindows())
@@ -54,6 +53,8 @@ if (mode == UpdaterMode.Native)
         builder.Services.AddSingleton<IServiceController, WindowsServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, JunctionLinkSwitcher>();
         builder.Services.AddSingleton<IInstalledVersionRecorder, WindowsUninstallEntryVersionRecorder>();
+        builder.Services.AddSingleton<IProcessRunner, SystemProcessRunner>();
+        builder.Services.AddSingleton<IEngineUpgradeTarget, WindowsNativeEngineUpgradeTarget>();
     }
     else
     {
@@ -62,6 +63,7 @@ if (mode == UpdaterMode.Native)
         builder.Services.AddSingleton<IServiceController, LaunchdServiceController>();
         builder.Services.AddSingleton<IVersionLinkSwitcher, SymbolicLinkSwitcher>();
         builder.Services.AddSingleton<IInstalledVersionRecorder, NoOpInstalledVersionRecorder>();
+        builder.Services.AddSingleton<IEngineUpgradeTarget, UnsupportedEngineUpgradeTarget>();
     }
 }
 else

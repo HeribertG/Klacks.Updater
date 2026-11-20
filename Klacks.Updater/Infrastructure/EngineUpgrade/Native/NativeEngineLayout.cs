@@ -68,6 +68,43 @@ public class NativeEngineLayout
 
     public static string BinDirectory(string engineDirectory) => Path.Combine(engineDirectory, BinDirectoryName);
 
+    public bool IsPinnedEngineDirectory(string path) =>
+        IsPinned(path, ProgramRoot, LegacyEngineDirectoryName);
+
+    public bool IsPinnedBinDirectory(string path) =>
+        string.Equals(Path.GetFileName(TrimSeparators(path)), BinDirectoryName, StringComparison.OrdinalIgnoreCase)
+        && IsPinnedEngineDirectory(Path.GetDirectoryName(TrimSeparators(path)) ?? string.Empty);
+
+    public bool IsPinnedPgCtl(string path) =>
+        string.Equals(Path.GetFileName(path), PgCtlExecutableName, StringComparison.OrdinalIgnoreCase)
+        && IsPinnedBinDirectory(Path.GetDirectoryName(path) ?? string.Empty);
+
+    public bool IsPinnedDataDirectory(string path) =>
+        IsPinned(path, DataRoot, LegacyDataDirectoryName);
+
+    private static bool IsPinned(string path, string root, string baseName)
+    {
+        var trimmed = TrimSeparators(path);
+        if (!NativeEngineCommands.IsSamePath(Path.GetDirectoryName(trimmed) ?? string.Empty, root))
+        {
+            return false;
+        }
+
+        var name = Path.GetFileName(trimmed);
+        if (string.Equals(name, baseName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var prefix = baseName + MajorSeparator;
+        return name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && name.Length > prefix.Length
+            && name[prefix.Length..].All(char.IsAsciiDigit);
+    }
+
+    private static string TrimSeparators(string path) =>
+        path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar).TrimEnd(Path.DirectorySeparatorChar);
+
     public static string CreatedByMarker(string dataDirectory) => dataDirectory.TrimEnd(Path.DirectorySeparatorChar) + CreatedByMarkerSuffix;
 
     private static string Format(int major) => major.ToString(CultureInfo.InvariantCulture);

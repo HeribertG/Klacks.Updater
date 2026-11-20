@@ -32,7 +32,7 @@ public class CapabilityReporterTests
     [Test]
     public async Task Supported_target_reports_the_engine_upgrade_capability()
     {
-        await Reporter().ReportOnceAsync(CancellationToken.None);
+        (await Reporter().ReportOnceAsync(CancellationToken.None)).ShouldBeTrue();
 
         await _store.Received(1).UpsertSettingAsync(
             EngineUpgradeConstants.CapabilitySettingType,
@@ -81,6 +81,6 @@ public class CapabilityReporterTests
         _store.UpsertSettingAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns<Task>(_ => throw new InvalidOperationException("database down"));
 
-        await Should.NotThrowAsync(() => Reporter().ReportOnceAsync(CancellationToken.None));
+        (await Reporter().ReportOnceAsync(CancellationToken.None)).ShouldBeFalse();
     }
 }

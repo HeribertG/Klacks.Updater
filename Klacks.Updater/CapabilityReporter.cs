@@ -5,8 +5,8 @@
 /// it). "postgres-engine-upgrade/1" is reported only while the registered engine upgrade target inspects as
 /// supported. The journal is checked before the (slow) inspection and again right before the write, so an upgrade that
 /// starts meanwhile suppresses the report; the remaining window (one database round trip) closes long before the upgrade
-/// takes its snapshot, which follows the artifact pull and the application stop. Failures (database down) are logged and
-/// retried at the next tick.
+/// takes its snapshot, which follows the artifact pull and the application stop. Failures (database down, or not migrated
+/// yet on a fresh installation) are logged and retried after one minute instead of the full interval.
 /// </summary>
 /// <param name="store">settings access</param>
 /// <param name="target">Engine upgrade target of this deployment</param>
@@ -54,18 +54,20 @@ public class CapabilityReporter : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await ReportOnceAsync(stoppingToken);
-            await Task.Delay(EngineUpgradeConstants.CapabilityReportInterval, stoppingToken);
+            var reported = await ReportOnceAsync(stoppingToken);
+            await Task.Delay(
+                reported ? EngineUpgradeConstants.CapabilityReportInterval : EngineUpgradeConstants.CapabilityReportRetryInterval,
+                stoppingToken);
         }
     }
 
-    public async Task ReportOnceAsync(CancellationToken cancellationToken)
+    public async Task<bool> ReportOnceAsync(CancellationToken cancellationToken)
     {
         try
         {
             if (_journal.Exists())
             {
-                return;
+                return true;
             }
 
             var inspection = await _target.InspectAsync(cancellationToken);
@@ -75,14 +77,17 @@ public class CapabilityReporter : BackgroundService
             var value = UpdaterCapabilityReport.Build(UpdaterVersion, _options.Mode, capabilities, DateTime.UtcNow);
             if (_journal.Exists())
             {
-                return;
+                return true;
             }
 
             await _store.UpsertSettingAsync(EngineUpgradeConstants.CapabilitySettingType, value, cancellationToken);
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Reporting the updater capabilities failed; retrying at the next interval.");
+            _logger.LogWarning(ex, "Reporting the updater capabilities failed; retrying in {Minutes} minute(s).",
+                EngineUpgradeConstants.CapabilityReportRetryInterval.TotalMinutes);
+            return false;
         }
     }
 }

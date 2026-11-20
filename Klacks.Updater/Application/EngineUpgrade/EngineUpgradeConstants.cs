@@ -19,5 +19,6 @@ public static class EngineUpgradeConstants
     public const string CapabilitySettingType = "UPDATER_CAPABILITIES";
     public const string EngineUpgradeCapability = "postgres-engine-upgrade/1";
     public static readonly TimeSpan CapabilityReportInterval = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan CapabilityReportRetryInterval = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan DatabaseRetryInterval = TimeSpan.FromSeconds(15);
 }

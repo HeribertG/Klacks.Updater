@@ -41,6 +41,9 @@ public static partial class DockerEnginePaths
     public static string OwnershipMarker(Guid operationId, string targetSubdir) =>
         DumpDirectory(operationId) + Separator + OwnershipMarkerPrefix + targetSubdir;
 
+    public static string DepthBelowDataRoot(string path) =>
+        path[DataRoot.Length..].Count(character => character == Separator).ToString(CultureInfo.InvariantCulture);
+
     public static bool IsValidSubdir(string? subdir) =>
         !string.IsNullOrEmpty(subdir)
         && subdir != CurrentDirectory

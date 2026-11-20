@@ -128,6 +128,15 @@ public class DockerEngineUpgradeHelpersTests
     }
 
     [Test]
+    public void Paths_OwnershipMarker_DepthMatchesTheExchangeLayout()
+    {
+        var marker = DockerEnginePaths.OwnershipMarker(Guid.Empty, "pg19");
+
+        marker.ShouldBe("/var/lib/postgresql/data/engine-upgrade/00000000000000000000000000000000/owns-pg19");
+        DockerEnginePaths.DepthBelowDataRoot(marker).ShouldBe("3");
+    }
+
+    [Test]
     public void Output_ParseIdentity_ReturnsMajorAndDirectory() =>
         DockerEngineCommandOutput.ParseIdentity("190001|/var/lib/postgresql/data/pg19\n").ShouldBe((19, "/var/lib/postgresql/data/pg19"));
 

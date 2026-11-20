@@ -47,7 +47,6 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
     private const string PrivateDirectoryMode = "0700";
     private const string DataDirectoryVariable = "PGDATA";
     private const string Loopback = "127.0.0.1";
-    private const string MarkerSearchDepth = "3";
     private const string ComposeConfigFailedMessage = "'docker compose config' failed; its output is withheld because it contains secrets.";
     private const int ReadinessAttempts = 30;
     private static readonly TimeSpan ReadinessDelay = TimeSpan.FromSeconds(2);
@@ -192,7 +191,7 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
         if (entries.Contains(targetSubdir, StringComparer.Ordinal))
         {
             throw new InvalidOperationException(
-                $"The postgres volume already contains '{targetSubdir}', which this operation did not create; check and remove it by hand (see README) before retrying.");
+                $"The postgres volume already contains '{targetSubdir}', which this operation did not create (left over from a failed upgrade). Nothing was removed; contact Klacks support (see README.md, PostgreSQL major upgrade).");
         }
 
         await ExecAsync(["touch", DockerEnginePaths.OwnershipMarker(context.OperationId, targetSubdir)], cancellationToken);
@@ -328,7 +327,7 @@ public class DockerEngineUpgradeTarget : IEngineUpgradeTarget
 
         var dumpDirectory = DockerEnginePaths.DumpDirectory(context.OperationId);
         var marker = DockerEnginePaths.OwnershipMarker(context.OperationId, targetSubdir);
-        var found = await ExecAsync(["find", DockerEnginePaths.DataRoot, "-maxdepth", MarkerSearchDepth, "-path", marker], cancellationToken);
+        var found = await ExecAsync(["find", DockerEnginePaths.DataRoot, "-maxdepth", DockerEnginePaths.DepthBelowDataRoot(marker), "-path", marker], cancellationToken);
         if (DockerEngineCommandOutput.ParseEntries(found).Contains(marker, StringComparer.Ordinal))
         {
             _logger.LogInformation("Engine upgrade {Id}: PostgreSQL {Major} is active again; removing {Directory}.", context.OperationId, context.FromMajor, targetDirectory);

@@ -75,6 +75,21 @@ public class NpgsqlEngineSnapshotReaderIntegrationTests
         snapshot.InvalidIndexes.ShouldBeEmpty();
     }
 
+    [Test]
+    public async Task Snapshot_reads_the_latest_migration_of_a_snake_case_history_table()
+    {
+        await ExecuteAsync(DatabaseConnection(), """
+            DROP TABLE "__EFMigrationsHistory";
+            CREATE TABLE "__EFMigrationsHistory" (migration_id varchar(150) PRIMARY KEY, product_version varchar(32));
+            INSERT INTO "__EFMigrationsHistory" VALUES ('20261119_C', '10'), ('20250101_A', '10');
+            """);
+        var reader = new NpgsqlEngineSnapshotReader(Options.Create(new UpdaterOptions { ConnectionString = _adminConnection }));
+
+        var snapshot = await reader.SnapshotAsync(_database, CancellationToken.None);
+
+        snapshot.MaxMigrationId.ShouldBe("20261119_C");
+    }
+
     private string DatabaseConnection() =>
         new NpgsqlConnectionStringBuilder(_adminConnection) { Database = _database }.ConnectionString;
 

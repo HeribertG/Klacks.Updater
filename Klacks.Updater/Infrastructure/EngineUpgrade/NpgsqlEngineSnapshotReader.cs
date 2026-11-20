@@ -47,7 +47,8 @@ public class NpgsqlEngineSnapshotReader : IEngineSnapshotReader
 
     private const string ExtensionsSql = "SELECT extname FROM pg_extension ORDER BY extname;";
     private const string MigrationTableSql = "SELECT to_regclass('public.\"__EFMigrationsHistory\"') IS NOT NULL;";
-    private const string MaxMigrationSql = "SELECT max(\"MigrationId\") FROM public.\"__EFMigrationsHistory\";";
+    private const string MaxMigrationSql =
+        "SELECT max(coalesce(to_jsonb(h) ->> 'MigrationId', to_jsonb(h) ->> 'migration_id')) FROM public.\"__EFMigrationsHistory\" h;";
 
     private const string InvalidIndexesSql = @"
         SELECT format('%I.%I', n.nspname, c.relname)

@@ -4,7 +4,7 @@ namespace Klacks.Updater.Application.EngineUpgrade;
 
 /// <summary>
 /// Contract values of the PostgreSQL engine upgrade: signature domain, journal schema and file names, space rule,
-/// capability report and the retry and report intervals.
+/// capability report, the retry and report intervals and the maximum age of a pending engine upgrade request.
 /// </summary>
 public static class EngineUpgradeConstants
 {
@@ -21,4 +21,6 @@ public static class EngineUpgradeConstants
     public static readonly TimeSpan CapabilityReportInterval = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan CapabilityReportRetryInterval = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan DatabaseRetryInterval = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan PendingEngineUpgradeMaxAge = TimeSpan.FromMinutes(30);
+    public const string ExpiredRequestMessage = "Engine upgrade request expired before the updater picked it up; start it again.";
 }

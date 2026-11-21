@@ -39,7 +39,7 @@ public class NpgsqlUpdateOperationStore : IUpdateOperationStore
                 ORDER BY requested_at
                 LIMIT 1 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, operation_type, from_version, target_version, artifact_ref, artifact_sha256, artifact_signature, contains_migrations, backup_ref;";
+            RETURNING id, operation_type, from_version, target_version, artifact_ref, artifact_sha256, artifact_signature, contains_migrations, backup_ref, requested_at;";
 
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
@@ -63,6 +63,7 @@ public class NpgsqlUpdateOperationStore : IUpdateOperationStore
             ArtifactSignature = reader.IsDBNull(6) ? null : reader.GetString(6),
             ContainsMigrations = reader.GetBoolean(7),
             BackupRef = reader.IsDBNull(8) ? null : reader.GetString(8),
+            RequestedAt = DateTime.SpecifyKind(reader.GetDateTime(9), DateTimeKind.Utc),
         };
     }
 

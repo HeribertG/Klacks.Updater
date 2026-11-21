@@ -4,7 +4,9 @@
 /// Background loop that drives the hand-off queue: on startup first recovers an interrupted engine upgrade, then
 /// reclaims stuck (lease-expired) Running rows (retried until the database answers once), then repeatedly claims the next Pending operation, routes it by type to its executor while heartbeating the
 /// lease, and writes the terminal status back. An unknown operation type fails without any change, so a newer row
-/// can never be mistaken for an application update. The updater never updates itself — only api/ui.
+/// can never be mistaken for an application update. A PostgreSQL engine upgrade queued longer ago than
+/// EngineUpgradeConstants.PendingEngineUpgradeMaxAge is not executed but failed with a request-expired message, so a
+/// forgotten request never takes the database down unannounced. The updater never updates itself — only api/ui.
 /// </summary>
 /// <param name="store">Hand-off queue access</param>
 /// <param name="executor">The update/rollback state machine</param>
@@ -203,6 +205,8 @@ public class Worker : BackgroundService
         {
             UpdateOperationType.Update or UpdateOperationType.Rollback => _executor.ExecuteAsync(operation, stoppingToken),
             UpdateOperationType.WhisperInstall or UpdateOperationType.WhisperUninstall => _whisperExecutor.ExecuteAsync(operation, stoppingToken),
+            UpdateOperationType.PostgresUpgrade when EngineUpgradeRequestExpiry.IsExpired(operation, DateTime.UtcNow) =>
+                Task.FromResult(new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, EngineUpgradeConstants.ExpiredRequestMessage)),
             UpdateOperationType.PostgresUpgrade => _engineUpgradeExecutor.ExecuteAsync(operation, stoppingToken),
             _ => Task.FromResult(RejectUnknownType(operation)),
         };

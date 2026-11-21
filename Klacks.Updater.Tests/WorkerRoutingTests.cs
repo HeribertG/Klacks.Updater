@@ -3,6 +3,7 @@
 namespace Klacks.Updater.Tests;
 
 using Klacks.Updater.Application;
+using Klacks.Updater.Application.EngineUpgrade;
 using Klacks.Updater.Domain;
 using Klacks.Updater.Infrastructure.EngineUpgrade;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,7 +44,7 @@ public class WorkerRoutingTests
     [TearDown]
     public void TearDown() => _engine.Dispose();
 
-    private async Task<(UpdateExecutionStatus Status, string Message)> RunAsync(UpdateOperationType type)
+    private async Task<(UpdateExecutionStatus Status, string Message)> RunAsync(UpdateOperationType type, TimeSpan? queuedFor = null)
     {
         var operation = new UpdateOperation
         {
@@ -53,6 +54,7 @@ public class WorkerRoutingTests
             TargetVersion = "19",
             ArtifactRef = "ghcr.io/heribertg/klacks-postgres:19",
             ArtifactSha256 = "sha256:abc",
+            RequestedAt = DateTime.UtcNow - (queuedFor ?? TimeSpan.Zero),
         };
         _store.ClaimNextPendingAsync(Arg.Any<CancellationToken>()).Returns(operation, (UpdateOperation?)null);
 
@@ -95,6 +97,26 @@ public class WorkerRoutingTests
         _engine.Target.Calls.ShouldBe([FakeEngineUpgradeTarget.Inspect]);
         _applier.ReceivedCalls().ShouldBeEmpty();
         _whisperApplier.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Expired_postgres_upgrade_request_fails_without_touching_the_engine()
+    {
+        var (status, message) = await RunAsync(UpdateOperationType.PostgresUpgrade, TimeSpan.FromMinutes(31));
+
+        status.ShouldBe(UpdateExecutionStatus.Failed);
+        message.ShouldBe(EngineUpgradeConstants.ExpiredRequestMessage);
+        _engine.Target.Calls.ShouldBeEmpty();
+        _applier.ReceivedCalls().ShouldBeEmpty();
+        _whisperApplier.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Old_application_update_request_is_not_expired()
+    {
+        var (_, message) = await RunAsync(UpdateOperationType.Update, TimeSpan.FromHours(5));
+
+        message.ShouldNotBe(EngineUpgradeConstants.ExpiredRequestMessage);
     }
 
     [Test]

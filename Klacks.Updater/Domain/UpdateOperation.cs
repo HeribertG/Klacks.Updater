@@ -5,7 +5,7 @@ namespace Klacks.Updater.Domain;
 /// <summary>
 /// A claimed update_history row as the executor needs it. The rollback target version is
 /// FromVersion for an Update operation (the version it replaced) and TargetVersion for an explicit
-/// Rollback operation (the version to restore to).
+/// Rollback operation (the version to restore to). RequestedAt is the UTC time the row was queued.
 /// </summary>
 public record UpdateOperation
 {
@@ -26,6 +26,8 @@ public record UpdateOperation
     public bool ContainsMigrations { get; init; }
 
     public string? BackupRef { get; init; }
+
+    public DateTime RequestedAt { get; init; }
 
     public string RollbackTargetVersion =>
         OperationType == UpdateOperationType.Update ? FromVersion : TargetVersion;

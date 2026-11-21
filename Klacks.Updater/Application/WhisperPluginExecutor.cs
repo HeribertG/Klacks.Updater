@@ -6,7 +6,8 @@
 /// Speaches-compatible API → install the model → enable the provider row → only then stop the other engines (a failed
 /// switch must never leave the system without a working engine). A failure after the start of an engine that was not
 /// yet the enabled one stops that newcomer again; a model switch of the running engine leaves it running. Uninstall:
-/// disable the provider row → stop every supported engine. Exactly one engine runs at a time. Returns a terminal status
+/// disable the provider row → stop every supported engine. Klacks-stt also hosts local speech output: while that is
+/// installed it is neither stopped as a previous engine, nor as a failed newcomer, nor on uninstall. Exactly one engine runs at a time. Returns a terminal status
 /// and never throws, except that a cancellation requested through the token (updater shutdown) is rethrown after a
 /// best-effort stop of a just-started newcomer; a timeout that is not a requested cancellation is a plain failure.
 /// </summary>
@@ -14,6 +15,7 @@
 /// <param name="installer">Polls the engine API and installs the model</param>
 /// <param name="providerStore">Maintains the well-known custom_stt_providers row</param>
 /// <param name="resourceCheck">Pre-install memory and disk gate</param>
+/// <param name="ttsStore">Tells whether local speech output is installed; klacks-stt is then never stopped here</param>
 /// <param name="options">Deployment configuration (engine service names, profiles and URLs)</param>
 /// <param name="logger">Logger for diagnostic output</param>
 using Klacks.Updater.Domain;
@@ -30,6 +32,7 @@ public class WhisperPluginExecutor
     private readonly IWhisperModelInstaller _installer;
     private readonly IWhisperProviderStore _providerStore;
     private readonly IWhisperResourceCheck _resourceCheck;
+    private readonly ILocalTtsStore _ttsStore;
     private readonly UpdaterOptions _options;
     private readonly ILogger<WhisperPluginExecutor> _logger;
 
@@ -38,6 +41,7 @@ public class WhisperPluginExecutor
         IWhisperModelInstaller installer,
         IWhisperProviderStore providerStore,
         IWhisperResourceCheck resourceCheck,
+        ILocalTtsStore ttsStore,
         IOptions<UpdaterOptions> options,
         ILogger<WhisperPluginExecutor> logger)
     {
@@ -45,6 +49,7 @@ public class WhisperPluginExecutor
         _installer = installer;
         _providerStore = providerStore;
         _resourceCheck = resourceCheck;
+        _ttsStore = ttsStore;
         _options = options.Value;
         _logger = logger;
     }
@@ -92,8 +97,10 @@ public class WhisperPluginExecutor
         }
 
         var newcomerStartAttempted = false;
+        var keepSttRunning = false;
         try
         {
+            keepSttRunning = await _ttsStore.IsInstalledAsync(cancellationToken);
             var capacityError = await _resourceCheck.CheckAsync(profile.RequiredMemoryBytes, profile.RequiredDiskBytes, cancellationToken);
             if (capacityError is not null)
             {
@@ -109,13 +116,13 @@ public class WhisperPluginExecutor
 
             if (!await _installer.WaitForReadyAsync(profile.BaseUrl, cancellationToken))
             {
-                await StopNewcomerAsync(profile, newcomerStartAttempted);
+                await StopNewcomerAsync(profile, newcomerStartAttempted, keepSttRunning);
                 return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"{profile.ProviderName} service did not become ready.");
             }
 
             await _installer.InstallModelAsync(profile.BaseUrl, operation.ArtifactRef, cancellationToken);
             await _providerStore.UpsertEnabledAsync(operation.ArtifactRef, profile.ProviderName, profile.BaseUrl, cancellationToken);
-            var previousEnginesStopped = await StopOtherEnginesAsync(profile, cancellationToken);
+            var previousEnginesStopped = await StopOtherEnginesAsync(profile, keepSttRunning, cancellationToken);
 
             var message = $"{profile.ProviderName} installed (model {operation.TargetVersion}).";
             return new UpdateExecutionResult(
@@ -125,13 +132,13 @@ public class WhisperPluginExecutor
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await StopNewcomerAsync(profile, newcomerStartAttempted);
+            await StopNewcomerAsync(profile, newcomerStartAttempted, keepSttRunning);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "STT install {Id} failed.", operation.Id);
-            await StopNewcomerAsync(profile, newcomerStartAttempted);
+            await StopNewcomerAsync(profile, newcomerStartAttempted, keepSttRunning);
             return new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, $"{profile.ProviderName} install failed: {ex.Message}");
         }
     }
@@ -142,9 +149,10 @@ public class WhisperPluginExecutor
         {
             await _providerStore.DisableAsync(cancellationToken);
 
+            var keepSttRunning = await _ttsStore.IsInstalledAsync(cancellationToken);
             var stopErrors = new List<Exception>();
             var attempted = 0;
-            foreach (var profile in SttEngineProfiles.All(_options).Where(_applier.Supports))
+            foreach (var profile in SttEngineProfiles.All(_options).Where(p => _applier.Supports(p) && !IsKeptRunning(p, keepSttRunning)))
             {
                 attempted++;
                 try
@@ -176,11 +184,14 @@ public class WhisperPluginExecutor
         }
     }
 
-    private async Task<bool> StopOtherEnginesAsync(SttEngineProfile target, CancellationToken cancellationToken)
+    private bool IsKeptRunning(SttEngineProfile profile, bool localTtsInstalled) =>
+        localTtsInstalled && profile.ServiceName == _options.SttServiceName;
+
+    private async Task<bool> StopOtherEnginesAsync(SttEngineProfile target, bool localTtsInstalled, CancellationToken cancellationToken)
     {
         var allStopped = true;
         var others = SttEngineProfiles.All(_options)
-            .Where(p => p.ServiceName != target.ServiceName && _applier.Supports(p));
+            .Where(p => p.ServiceName != target.ServiceName && _applier.Supports(p) && !IsKeptRunning(p, localTtsInstalled));
 
         foreach (var other in others)
         {
@@ -198,9 +209,9 @@ public class WhisperPluginExecutor
         return allStopped;
     }
 
-    private async Task StopNewcomerAsync(SttEngineProfile profile, bool newcomerStartAttempted)
+    private async Task StopNewcomerAsync(SttEngineProfile profile, bool newcomerStartAttempted, bool localTtsInstalled)
     {
-        if (!newcomerStartAttempted)
+        if (!newcomerStartAttempted || IsKeptRunning(profile, localTtsInstalled))
         {
             return;
         }

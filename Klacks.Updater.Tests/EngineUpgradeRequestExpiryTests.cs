@@ -38,6 +38,7 @@ public class EngineUpgradeRequestExpiryTests
     [TestCase(UpdateOperationType.Rollback)]
     [TestCase(UpdateOperationType.WhisperInstall)]
     [TestCase(UpdateOperationType.WhisperUninstall)]
+    [TestCase(UpdateOperationType.TtsInstall)]
     public void OtherOperationTypes_NeverExpire(UpdateOperationType type)
     {
         EngineUpgradeRequestExpiry.IsExpired(Operation(type, TimeSpan.FromDays(3)), Now).ShouldBeFalse();

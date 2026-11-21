@@ -24,6 +24,7 @@ public class WhisperPluginExecutorTests
     private IWhisperModelInstaller _installer = null!;
     private IWhisperProviderStore _providerStore = null!;
     private IWhisperResourceCheck _resourceCheck = null!;
+    private ILocalTtsStore _ttsStore = null!;
     private WhisperPluginExecutor _executor = null!;
 
     [SetUp]
@@ -34,6 +35,7 @@ public class WhisperPluginExecutorTests
         _installer = Substitute.For<IWhisperModelInstaller>();
         _providerStore = Substitute.For<IWhisperProviderStore>();
         _resourceCheck = Substitute.For<IWhisperResourceCheck>();
+        _ttsStore = Substitute.For<ILocalTtsStore>();
         _resourceCheck.CheckAsync(Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns((string?)null);
         _installer.WaitForReadyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
@@ -42,6 +44,7 @@ public class WhisperPluginExecutorTests
             _installer,
             _providerStore,
             _resourceCheck,
+            _ttsStore,
             Options.Create(_options),
             NullLogger<WhisperPluginExecutor>.Instance);
     }
@@ -486,5 +489,79 @@ public class WhisperPluginExecutorTests
 
         result.Status.ShouldBe(UpdateExecutionStatus.Failed);
         result.Message.ShouldContain("compose stop failed");
+    }
+
+    [Test]
+    public async Task Install_Whisper_WhileLocalTtsInstalled_DoesNotStopStt()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+        var result = await _executor.ExecuteAsync(InstallOp());
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
+        result.Message.ShouldNotContain("failed");
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+        await _providerStore.Received(1).UpsertEnabledAsync(
+            LargeModelId, WhisperPluginConstants.ProviderName, _options.WhisperBaseUrl, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_Whisper_WithoutLocalTts_StillStopsStt()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(false);
+
+        await _executor.ExecuteAsync(InstallOp());
+
+        await _applier.Received(1).StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_Parakeet_WhileLocalTtsInstalled_StillStopsWhisper()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+        await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        await _applier.Received(1).StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+        await _applier.DidNotReceive().StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Install_ParakeetFailsOnEngineChange_WhileLocalTtsInstalled_DoesNotStopStt()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _providerStore.GetEnabledApiUrlAsync(Arg.Any<CancellationToken>()).Returns(_options.WhisperBaseUrl);
+        _installer.InstallModelAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("download failed"));
+
+        var result = await _executor.ExecuteAsync(InstallOp(WhisperPluginConstants.ModelAliasParakeet, ParakeetModelId));
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Failed);
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Uninstall_WhileLocalTtsInstalled_DoesNotStopStt()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(true);
+
+        var result = await _executor.ExecuteAsync(UninstallOp());
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
+        await _providerStore.Received(1).DisableAsync(Arg.Any<CancellationToken>());
+        await _applier.DidNotReceive().StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.SttServiceName)), Arg.Any<CancellationToken>());
+        await _applier.Received(1).StopAsync(Arg.Is<SttEngineProfile>(p => IsService(p, _options.WhisperServiceName)), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Uninstall_WhileLocalTtsInstalled_OnWindowsLikeApplier_StopsNothing()
+    {
+        _ttsStore.IsInstalledAsync(Arg.Any<CancellationToken>()).Returns(true);
+        _applier.Supports(Arg.Is<SttEngineProfile>(p => p != null && !p.IsParakeet)).Returns(false);
+
+        var result = await _executor.ExecuteAsync(UninstallOp());
+
+        result.Status.ShouldBe(UpdateExecutionStatus.Succeeded);
+        await _applier.DidNotReceive().StopAsync(Arg.Any<SttEngineProfile>(), Arg.Any<CancellationToken>());
     }
 }

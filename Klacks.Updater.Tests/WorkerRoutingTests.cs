@@ -69,12 +69,21 @@ public class WorkerRoutingTests
             Substitute.For<IWhisperModelInstaller>(),
             Substitute.For<IWhisperProviderStore>(),
             Substitute.For<IWhisperResourceCheck>(),
+            Substitute.For<ILocalTtsStore>(),
             Options.Create(new UpdaterOptions()),
             NullLogger<WhisperPluginExecutor>.Instance);
+        var ttsExecutor = new TtsInstallExecutor(
+            _whisperApplier,
+            Substitute.For<IWhisperModelInstaller>(),
+            Substitute.For<ILocalTtsStore>(),
+            Substitute.For<IWhisperProviderStore>(),
+            Options.Create(new UpdaterOptions()),
+            NullLogger<TtsInstallExecutor>.Instance);
         using var worker = new Worker(
             _store,
             executor,
             whisperExecutor,
+            ttsExecutor,
             _engine.Executor,
             _engine.Recovery,
             Substitute.For<IBackupRetentionService>(),
@@ -97,6 +106,17 @@ public class WorkerRoutingTests
         _engine.Target.Calls.ShouldBe([FakeEngineUpgradeTarget.Inspect]);
         _applier.ReceivedCalls().ShouldBeEmpty();
         _whisperApplier.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Tts_install_goes_to_the_tts_executor_and_never_touches_the_application()
+    {
+        var (status, message) = await RunAsync(UpdateOperationType.TtsInstall, TimeSpan.FromDays(3));
+
+        status.ShouldBe(UpdateExecutionStatus.Failed);
+        message.ShouldContain("local speech model");
+        _engine.Target.Calls.ShouldBeEmpty();
+        _applier.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Test]

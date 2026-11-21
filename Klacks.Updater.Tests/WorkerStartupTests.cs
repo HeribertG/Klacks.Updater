@@ -51,12 +51,21 @@ public class WorkerStartupTests
             Substitute.For<IWhisperModelInstaller>(),
             Substitute.For<IWhisperProviderStore>(),
             Substitute.For<IWhisperResourceCheck>(),
+            Substitute.For<ILocalTtsStore>(),
             Options.Create(new UpdaterOptions()),
             NullLogger<WhisperPluginExecutor>.Instance);
+        var ttsExecutor = new TtsInstallExecutor(
+            Substitute.For<IWhisperPluginApplier>(),
+            Substitute.For<IWhisperModelInstaller>(),
+            Substitute.For<ILocalTtsStore>(),
+            Substitute.For<IWhisperProviderStore>(),
+            Options.Create(new UpdaterOptions()),
+            NullLogger<TtsInstallExecutor>.Instance);
         return new Worker(
             _store,
             executor,
             whisperExecutor,
+            ttsExecutor,
             _engine.Executor,
             _engine.Recovery,
             Substitute.For<IBackupRetentionService>(),

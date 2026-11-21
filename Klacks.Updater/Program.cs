@@ -82,6 +82,7 @@ builder.Services.AddSingleton<IArtifactVerifier, RsaArtifactVerifier>();
 builder.Services.AddSingleton<IBackupRetentionService, FileBackupRetentionService>();
 builder.Services.AddSingleton<IWhisperModelInstaller, HttpWhisperModelInstaller>();
 builder.Services.AddSingleton<IWhisperProviderStore, NpgsqlWhisperProviderStore>();
+builder.Services.AddSingleton<ILocalTtsStore, NpgsqlLocalTtsStore>();
 if (mode == UpdaterMode.Native && OperatingSystem.IsWindows())
 {
     builder.Services.AddSingleton<IWhisperResourceCheck, WindowsWhisperResourceCheck>();
@@ -93,6 +94,7 @@ else
 
 builder.Services.AddSingleton<UpdateExecutor>();
 builder.Services.AddSingleton<WhisperPluginExecutor>();
+builder.Services.AddSingleton<TtsInstallExecutor>();
 builder.Services.AddSingleton<IEngineSnapshotReader, NpgsqlEngineSnapshotReader>();
 builder.Services.AddSingleton<IEngineUpgradeJournal, FileEngineUpgradeJournal>();
 builder.Services.AddSingleton<IApplicationVersionReader, HttpApplicationVersionReader>();

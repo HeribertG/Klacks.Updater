@@ -11,6 +11,7 @@
 /// <param name="store">Hand-off queue access</param>
 /// <param name="executor">The update/rollback state machine</param>
 /// <param name="whisperExecutor">Installs or removes the self-hosted speech-to-text plugin</param>
+/// <param name="ttsExecutor">Installs local text-to-speech into the klacks-stt service</param>
 /// <param name="engineUpgradeExecutor">Runs PostgreSQL engine upgrades</param>
 /// <param name="engineUpgradeRecovery">Finishes or reverts an engine upgrade interrupted by a crash, before anything else runs</param>
 /// <param name="retention">Prunes old backups after every operation</param>
@@ -27,6 +28,7 @@ public class Worker : BackgroundService
     private readonly IUpdateOperationStore _store;
     private readonly UpdateExecutor _executor;
     private readonly WhisperPluginExecutor _whisperExecutor;
+    private readonly TtsInstallExecutor _ttsExecutor;
     private readonly EngineUpgradeExecutor _engineUpgradeExecutor;
     private readonly EngineUpgradeRecovery _engineUpgradeRecovery;
     private readonly IBackupRetentionService _retention;
@@ -37,6 +39,7 @@ public class Worker : BackgroundService
         IUpdateOperationStore store,
         UpdateExecutor executor,
         WhisperPluginExecutor whisperExecutor,
+        TtsInstallExecutor ttsExecutor,
         EngineUpgradeExecutor engineUpgradeExecutor,
         EngineUpgradeRecovery engineUpgradeRecovery,
         IBackupRetentionService retention,
@@ -46,6 +49,7 @@ public class Worker : BackgroundService
         _store = store;
         _executor = executor;
         _whisperExecutor = whisperExecutor;
+        _ttsExecutor = ttsExecutor;
         _engineUpgradeExecutor = engineUpgradeExecutor;
         _engineUpgradeRecovery = engineUpgradeRecovery;
         _retention = retention;
@@ -205,6 +209,7 @@ public class Worker : BackgroundService
         {
             UpdateOperationType.Update or UpdateOperationType.Rollback => _executor.ExecuteAsync(operation, stoppingToken),
             UpdateOperationType.WhisperInstall or UpdateOperationType.WhisperUninstall => _whisperExecutor.ExecuteAsync(operation, stoppingToken),
+            UpdateOperationType.TtsInstall => _ttsExecutor.ExecuteAsync(operation, stoppingToken),
             UpdateOperationType.PostgresUpgrade when EngineUpgradeRequestExpiry.IsExpired(operation, DateTime.UtcNow) =>
                 Task.FromResult(new UpdateExecutionResult(UpdateExecutionStatus.Failed, null, EngineUpgradeConstants.ExpiredRequestMessage)),
             UpdateOperationType.PostgresUpgrade => _engineUpgradeExecutor.ExecuteAsync(operation, stoppingToken),

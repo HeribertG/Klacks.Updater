@@ -20,13 +20,14 @@ public class SharedContractFreezeTests
         ((int)UpdateOperationType.WhisperInstall).ShouldBe(2);
         ((int)UpdateOperationType.WhisperUninstall).ShouldBe(3);
         ((int)UpdateOperationType.PostgresUpgrade).ShouldBe(4);
+        ((int)UpdateOperationType.TtsInstall).ShouldBe(5);
     }
 
     [Test]
     public void OperationTypeMembers_AreFrozen()
     {
         Enum.GetNames<UpdateOperationType>().ShouldBe(
-            ["Update", "Rollback", "WhisperInstall", "WhisperUninstall", "PostgresUpgrade"],
+            ["Update", "Rollback", "WhisperInstall", "WhisperUninstall", "PostgresUpgrade", "TtsInstall"],
             ignoreOrder: true);
     }
 
@@ -76,6 +77,14 @@ public class SharedContractFreezeTests
         WhisperPluginConstants.SmallModelId.ShouldBe("Systran/faster-whisper-small");
         WhisperPluginConstants.LargeModelId.ShouldBe("deepdml/faster-whisper-large-v3-turbo-ct2");
         WhisperPluginConstants.ParakeetModelId.ShouldBe("parakeet-tdt-0.6b-v3-int8");
+    }
+
+    [Test]
+    public void LocalTtsContract_IsFrozen()
+    {
+        TtsPluginConstants.ModelAlias.ShouldBe("supertonic-3");
+        TtsPluginConstants.ModelId.ShouldBe("supertonic-3-int8");
+        TtsPluginConstants.LocalBaseUrlSettingKey.ShouldBe("ASSISTANT_TTS_LOCAL_BASE_URL");
     }
 
     [Test]

@@ -9,4 +9,5 @@ public enum UpdateOperationType
     WhisperInstall = 2,
     WhisperUninstall = 3,
     PostgresUpgrade = 4,
+    TtsInstall = 5,
 }

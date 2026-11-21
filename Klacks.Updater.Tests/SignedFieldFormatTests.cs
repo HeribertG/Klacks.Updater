@@ -65,6 +65,19 @@ public class SignedFieldFormatTests
         SignedFieldFormat.IsValid(App("large-v3-turbo") with { OperationType = UpdateOperationType.WhisperInstall }).ShouldBeTrue();
 
     [Test]
+    public void Local_speech_install_rows_keep_their_model_alias() =>
+        SignedFieldFormat.IsValid(App("supertonic-3", "supertonic-3-int8") with { OperationType = UpdateOperationType.TtsInstall }).ShouldBeTrue();
+
+    [Test]
+    public void Local_speech_install_rows_with_control_characters_are_rejected()
+    {
+        var row = App("supertonic-3", "supertonic-3-int8") with { OperationType = UpdateOperationType.TtsInstall };
+
+        SignedFieldFormat.IsValid(row with { TargetVersion = "supertonic-3\n19" }).ShouldBeFalse();
+        SignedFieldFormat.IsValid(row with { ArtifactRef = "supertonic-3-int8\n" }).ShouldBeFalse();
+    }
+
+    [Test]
     public void Verifier_rejects_a_crafted_app_row_before_any_signature_check_even_in_unsigned_mode()
     {
         var verifier = new RsaArtifactVerifier(Options.Create(new UpdaterOptions()), NullLogger<RsaArtifactVerifier>.Instance);

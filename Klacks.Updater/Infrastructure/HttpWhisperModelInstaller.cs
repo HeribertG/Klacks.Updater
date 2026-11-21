@@ -3,7 +3,8 @@
 /// <summary>
 /// HTTP client for Speaches-compatible STT services (Speaches, Klacks.Stt): polls GET /v1/models on the given base URL
 /// until the service answers, then installs a model via POST /v1/models/{id} (slash in the model id URL-encoded).
-/// Conflict responses count as success so re-installing an already downloaded model is idempotent.
+/// Conflict responses count as success so re-installing an already downloaded model is idempotent; a 404 raises
+/// SttModelNotFoundException so callers can tell an unknown model from a failed download.
 /// </summary>
 /// <param name="httpClientFactory">Factory for the STT HTTP client (long timeout for model downloads)</param>
 /// <param name="logger">Logger for diagnostic output</param>
@@ -74,7 +75,10 @@ public class HttpWhisperModelInstaller : IWhisperModelInstaller
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new InvalidOperationException($"Model install for '{modelId}' failed with {(int)response.StatusCode}: {Truncate(body)}");
+        var message = $"Model install for '{modelId}' failed with {(int)response.StatusCode}: {Truncate(body)}";
+        throw response.StatusCode == HttpStatusCode.NotFound
+            ? new SttModelNotFoundException(message)
+            : new InvalidOperationException(message);
     }
 
     private static string Truncate(string value) => value.Length <= 300 ? value : value[..300];
